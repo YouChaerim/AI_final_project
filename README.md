@@ -7,7 +7,6 @@
 - 손글씨 OCR 및 요약/이해도 분석
 - 공부 리포트 자동 생성 및 시각화
 
----
 ## Naming
 ### Feature
 ### Commit 명명 규칙
@@ -18,10 +17,9 @@ Main Develop
 
 chae : 유채림 yuguemjae : 유금재 JEONGHYEONWOO : 정현우 OhSeokHwan : 오석환
 
----
 ## 📂 프로젝트 파일 구조 및 설명
 
----
+
 ## 개발 환경 세팅
 
 ### 🔸 Anaconda(Conda) 설치
@@ -34,20 +32,18 @@ chae : 유채림 yuguemjae : 유금재 JEONGHYEONWOO : 정현우 OhSeokHwan : �
   - **Intel:** `Anaconda3-2024.10-1-MacOSX-x86_64.pkg`
   - **Apple Silicon(M1/M2/M3):** `Anaconda3-2024.10-1-MacOSX-arm64.pkg`
 
----
 ### 🔸 Conda 가상환경 생성
 ```
 bash
 conda create -n final python=3.10
 conda activate final
 ```
----
+
 ## 설치 명령어
 ```
 pip install streamlit streamlit-webrtc opencv-python
 ```
 
----
 ## 실행 명령어
 ```
 - streamlit run st.py
