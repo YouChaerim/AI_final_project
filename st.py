@@ -32,6 +32,3 @@ if st.session_state["start_camera"]:
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True,
     )
-
-    
-    #pip install streamlit streamlit-webrtc opencv-python
