@@ -42,9 +42,10 @@ conda activate final
 ## 설치 명령어
 ```
 pip install streamlit streamlit-webrtc opencv-python
+pip install opencv-python mediapipe numpy
 ```
 
 ## 실행 명령어
 ```
-- streamlit run st.py
+streamlit run main.py
 ```
