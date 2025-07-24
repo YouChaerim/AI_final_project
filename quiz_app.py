@@ -1,138 +1,219 @@
 import streamlit as st
-from dotenv import load_dotenv
-import os
+import configparser
 import openai
 import json
 
-# ✅ OpenAI API 키 로드
-load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
+# ✅ API 키 불러오기
+config = configparser.ConfigParser()
+config.read("config.ini")
+api_key = config.get("openai", "api_key")
 client = openai.OpenAI(api_key=api_key)
 
 st.set_page_config(page_title="GPT 퀴즈 생성기", layout="centered")
-st.title("📘 GPT 기반 자동 퀴즈 생성기")
-st.markdown("입력한 학습 내용을 분석해 자동으로 다양한 퀴즈를 생성하고 채점합니다!")
+st.title("📘 GPT 기반 복습 퀴즈 생성기")
+st.markdown("학습 내용을 입력하면 다양한 유형의 퀴즈를 생성하고 채점할 수 있어요!")
 
-# 🔹 세션 상태 초기화
-if "quiz_data" not in st.session_state:
-    st.session_state.quiz_data = []
-if "user_answers" not in st.session_state:
-    st.session_state.user_answers = {}
-if "confirmed_answers" not in st.session_state:
-    st.session_state.confirmed_answers = {}
-if "wrong_indices" not in st.session_state:
-    st.session_state.wrong_indices = []
+# ✅ 세션 상태 초기화
+for key in ["quiz_data", "user_answers", "confirmed_answers", "wrong_indices", "chat_logs", "summary_log", "graded"]:
+    if key not in st.session_state:
+        st.session_state[key] = [] if "data" in key else (False if key == "graded" else {})
 
-# ✅ GPT로 퀴즈 생성
+# ✅ GPT 퀴즈 생성 함수
 def generate_quiz(content):
     system_prompt = (
-        "너는 똑똑한 선생님이야. 아래의 학습 내용을 바탕으로 다음과 같은 퀴즈를 만들어줘:\n"
-        "- 서로 다른 주제의 OX, 객관식, 주관식, 빈칸 문제를 각각 1개씩 (총 4문제)\n"
-        "- 문제 내용은 서로 겹치지 않고 다양하게 구성해줘\n"
-        "- 문제별 해설은 충분히 구체적으로 작성해줘 (왜 정답이 맞는지 논리적으로 설명)\n"
-        "- JSON 배열 형태로 아래와 같이 응답해줘:\n"
-        "[\n"
-        "  {\"type\": \"OX\", \"question\": \"...\", \"answer\": \"...\", \"explanation\": \"...\"},\n"
-        "  {\"type\": \"객관식\", \"question\": \"...\", \"options\": [\"1\", \"2\", \"3\", \"4\"], \"answer\": \"...\", \"explanation\": \"...\"},\n"
-        "  {\"type\": \"주관식\", \"question\": \"...\", \"answer\": \"...\", \"explanation\": \"...\"},\n"
-        "  {\"type\": \"빈칸\", \"question\": \"...\", \"answer\": \"...\", \"explanation\": \"...\"}\n"
-        "]\n"
-        "JSON 외의 다른 설명은 절대 포함하지 마!"
+        "너는 똑똑한 선생님이야. 학습 내용을 바탕으로 다양한 퀴즈를 JSON 형식으로 생성해줘.\n"
+        "- 총 8문제, 유형은 OX, 객관식, 주관식, 빈칸 중 랜덤하게 구성\n"
+        "- 문제 유형은 균등하지 않아도 되고 자유롭게 구성 가능함\n"
+        "- 각 문제는 다음 항목을 포함해야 함:\n"
+        "  - type: 'OX' | '객관식' | '주관식' | '빈칸'\n"
+        "  - question: 질문 내용\n"
+        "  - options: (객관식, OX일 때만) 선택지 리스트\n"
+        "  - answer: 정답 (문자열 또는 리스트)\n"
+        "  - explanation: 해설 (왜 정답인지 설명)\n"
+        "  - example: 예시 또는 배경 설명 (선택사항)\n"
+        "JSON 배열로만 반환해줘. 설명문은 절대 포함하지 마."
     )
-    user_prompt = f"학습 내용:\n{content}"
-
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",  # ✅ 무료 모델
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": content}
             ],
             temperature=0.7
         )
-        content = response.choices[0].message.content.strip()
-        return json.loads(content)
+        return json.loads(response.choices[0].message.content.strip())
     except Exception as e:
         st.error(f"❌ 퀴즈 생성 실패: {e}")
         return []
 
-# ✅ 퀴즈 UI 렌더링
-def show_quiz(quiz_list):
-    for idx, quiz in enumerate(quiz_list):
-        st.subheader(f"문제 {idx + 1} ({quiz['type']})")
+# ✅ 학습 요약
+def summarize_content(content):
+    try:
+        system = "아래 내용을 3~5줄로 요약해줘."
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": content}
+            ]
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return "요약 실패"
+
+# ✅ GPT 오답 피드백
+def ask_gpt_about_wrong(problem, user_answer):
+    prompt = f"""문제: {problem['question']}
+정답: {problem['answer']}
+내가 작성한 오답: {user_answer}
+왜 틀렸는지 쉽게 설명해줘."""
+
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "너는 친절한 선생님이야."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content.strip()
+
+# ✅ GPT 답변 요약
+def summarize_answer(answer):
+    try:
+        system = "아래 내용을 최대 2문장으로 핵심만 요약해줘."
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": answer}
+            ]
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return "요약 실패"
+
+# ✅ 퀴즈 출력
+def show_quiz():
+    for idx, quiz in enumerate(st.session_state.quiz_data):
+        st.markdown(f"### 문제 {idx + 1} ({quiz['type']})")
         st.markdown(f"**{quiz['question']}**")
 
         key_input = f"input_{idx}"
-        key_button = f"button_{idx}"
+        key_form = f"form_{idx}"
 
         if idx not in st.session_state.confirmed_answers:
-            if quiz["type"] == "객관식":
-                user_input = st.radio("선택지", quiz["options"], key=key_input)
-            else:
-                user_input = st.text_input("정답 입력", key=key_input, on_change=None)
-
-            if st.button(f"문제 {idx + 1} 확인", key=key_button):
-                st.session_state.user_answers[idx] = user_input
-                st.session_state.confirmed_answers[idx] = True
-                st.rerun()
+            with st.form(key=key_form):
+                if quiz["type"] == "객관식":
+                    user_input = st.radio("선택지", quiz.get("options", []), key=key_input)
+                elif quiz["type"] == "OX":
+                    user_input = st.radio("선택지", ["O", "X"], key=key_input)
+                else:
+                    user_input = st.text_input("정답 입력", key=key_input)
+                submitted = st.form_submit_button("정답 제출")
+                if submitted:
+                    st.session_state.user_answers[idx] = user_input
+                    st.session_state.confirmed_answers[idx] = True
+                    st.rerun()
         else:
-            user_answer = st.session_state.user_answers[idx]
-            st.success(f"입력한 답: {user_answer}")
+            st.success(f"입력한 답: {st.session_state.user_answers[idx]}")
 
-# ✅ 채점 함수
+# ✅ 채점
 def grade_quiz():
+    st.subheader("🎯 채점 결과")
     wrongs = []
-    st.subheader("📊 채점 결과")
     for i, quiz in enumerate(st.session_state.quiz_data):
-        user_answer = st.session_state.user_answers.get(i, "")
-        is_correct = str(user_answer).strip() == str(quiz["answer"]).strip()
-        result = "✅ 정답" if is_correct else "❌ 오답"
-        st.markdown(f"**문제 {i + 1}: {result}**")
+        user = str(st.session_state.user_answers.get(i, "")).strip()
+        answer = quiz["answer"]
+        correct = user in answer if isinstance(answer, list) else user == str(answer).strip()
+
+        st.markdown(f"**문제 {i + 1}: {'✅ 정답' if correct else '❌ 오답'}**")
         st.markdown(f"- 질문: {quiz['question']}")
-        if quiz["type"] == "객관식":
-            st.markdown(f"- 선택지: {', '.join(quiz['options'])}")
-        st.markdown(f"- 정답: **{quiz['answer']}**")
-        st.markdown(f"- 해설: {quiz['explanation']}")
+        if quiz["type"] in ["객관식", "OX"]:
+            st.markdown(f"- 선택지: {', '.join(quiz.get('options', []))}")
+        st.markdown(f"- 정답: {answer}")
+        st.markdown(f"- 해설: {quiz.get('explanation', '없음')}")
+        st.markdown(f"- 예시: {quiz.get('example', '없음')}")
         st.markdown("---")
-        if not is_correct:
+
+        if not correct:
             wrongs.append(i)
     st.session_state.wrong_indices = wrongs
 
-# ✅ 오답 다시 풀기
-def retry_wrong():
-    retry = [st.session_state.quiz_data[i] for i in st.session_state.wrong_indices]
-    st.session_state.quiz_data = retry
-    st.session_state.user_answers = {}
-    st.session_state.confirmed_answers = {}
-    st.session_state.wrong_indices = []
-    st.rerun()
+# ✅ GPT 피드백 대화
+def wrong_gpt_chat():
+    for i in st.session_state.wrong_indices:
+        quiz = st.session_state.quiz_data[i]
+        user_answer = st.session_state.user_answers[i]
+        question_key = quiz["question"]
 
-# ✅ 학습 내용 입력
-user_input = st.text_area("✍️ 학습 내용을 입력하세요", height=200)
+        if question_key not in st.session_state.chat_logs:
+            reply = ask_gpt_about_wrong(quiz, user_answer)
+            st.session_state.chat_logs[question_key] = [{"role": "assistant", "content": reply}]
+            st.session_state[f"last_reply_{i}"] = reply
+
+        with st.expander(f"💬 GPT에게 문제 {i+1} 질문하기", expanded=True):
+            st.markdown(f"🧠 GPT 답변: {st.session_state[f'last_reply_{i}']}")
+            st.markdown(f"📌 요약: {summarize_answer(st.session_state[f'last_reply_{i}'])}")
+
+            with st.form(key=f"form_followup_{i}"):
+                key_followup = f"followup_{i}_text"
+                user_followup = st.text_input("추가 질문 입력", key=key_followup)
+                submitted = st.form_submit_button("질문 보내기")
+
+                if submitted and user_followup.strip():
+                    chat = st.session_state.chat_logs[question_key]
+                    chat.append({"role": "user", "content": user_followup})
+
+                    response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[{"role": "system", "content": "친절한 피드백을 제공해줘."}] + chat
+                    )
+                    reply = response.choices[0].message.content.strip()
+                    chat.append({"role": "assistant", "content": reply})
+
+                    st.session_state.chat_logs[question_key] = chat
+                    st.session_state[f"last_reply_{i}"] = reply
+
+            with st.expander("📜 전체 대화 보기", expanded=False):
+                for msg in st.session_state.chat_logs[question_key]:
+                    who = "🙋 질문" if msg["role"] == "user" else "🧠 답변"
+                    st.markdown(f"{who}: {msg['content']}")
+
+# ✅ 사용자 입력
+quiz_type = st.selectbox("문제 유형", ["모든 유형", "OX", "객관식", "주관식", "빈칸"])
+quiz_count = st.slider("출제할 퀴즈 개수", 4, 10, 8)
+content = st.text_area("✍️ 학습 내용을 입력하세요", height=200)
 
 if st.button("🧠 퀴즈 생성하기"):
-    if not user_input.strip():
+    if not content.strip():
         st.warning("내용을 입력해주세요.")
+    elif len(content.strip()) < 5:
+        st.error("❌ 퀴즈를 인식하지 못했습니다.")
     else:
-        with st.spinner("GPT가 퀴즈를 생성 중입니다..."):
-            quiz_data = generate_quiz(user_input)
-            if quiz_data:
-                st.session_state.quiz_data = quiz_data
+        with st.spinner("GPT가 퀴즈와 요약을 생성 중입니다..."):
+            st.session_state.summary_log = summarize_content(content)
+            quiz = generate_quiz(content)
+            if quiz:
+                st.session_state.quiz_data = quiz[:quiz_count]
                 st.session_state.user_answers = {}
                 st.session_state.confirmed_answers = {}
                 st.session_state.wrong_indices = []
+                st.session_state.chat_logs = {}
+                st.session_state.graded = False
                 st.rerun()
 
-# ✅ 퀴즈 보여주기 및 채점
+# ✅ 실행 흐름
+if st.session_state.get("summary_log"):
+    st.info(f"📚 학습 요약:\n\n{st.session_state.summary_log}")
+
 if st.session_state.quiz_data:
-    show_quiz(st.session_state.quiz_data)
+    show_quiz()
 
     if len(st.session_state.confirmed_answers) == len(st.session_state.quiz_data):
         if st.button("✅ 전체 채점"):
             grade_quiz()
-    else:
-        st.info("모든 문제를 완료 후 채점할 수 있습니다.")
+            st.session_state.graded = True
 
-if st.session_state.wrong_indices:
-    if st.button("🔁 오답만 다시 풀기"):
-        retry_wrong()
+    if st.session_state.graded:
+        wrong_gpt_chat()
