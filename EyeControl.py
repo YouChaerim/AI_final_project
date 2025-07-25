@@ -19,10 +19,12 @@ def detect_blink(image):
     [입력]
         image : BGR 형식의 numpy 배열 (스트림릿 프레임)
     [출력]
-        눈 깜빡임 표시, 윤곽선 시각화가 추가된 이미지(numpy)
+        눈 깜빡임 표시, 윤곽선 시각화가 추가된 이미지(numpy), 눈 깜빡임 여부(bool)
     '''
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)      # mediapipe는 RGB 사용
     results = face_mesh.process(rgb)                  # 얼굴 랜드마크 추출
+
+    is_blink = False  # 기본값
 
     if results.multi_face_landmarks:                  # 얼굴이 검출된 경우
         for face_landmarks in results.multi_face_landmarks:
@@ -42,6 +44,7 @@ def detect_blink(image):
 
             # ---- [깜빡임 인식] ----
             if left_eye_area < blink_threshold or right_eye_area < blink_threshold:
+                is_blink = True
                 cv2.putText(image, "Blink", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)  # 빨간색
             else:
                 cv2.putText(image, "Open", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)   # 초록색
@@ -49,4 +52,4 @@ def detect_blink(image):
             # ---- [눈 경계 표시(윤곽선)] ----
             cv2.polylines(image, [left_eye_points], isClosed=True, color=(0, 255, 0), thickness=1)
             cv2.polylines(image, [right_eye_points], isClosed=True, color=(0, 255, 0), thickness=1)
-    return image
+    return image, is_blink  # 이미지와 불린값 둘 다 반환
