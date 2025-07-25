@@ -49,3 +49,5 @@ train20
 train21
 train22
 train23
+"*.pyc" 
+"__pycache__/" 
