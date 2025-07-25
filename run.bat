@@ -1,0 +1,1 @@
+streamlit run "./ocr_quiz_app.py"
