@@ -13,7 +13,7 @@ import os
 # 🔐 OpenAI API 키 설정
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=api_key)   # ← 요렇게!
+client = OpenAI(api_key=api_key)
 
 # 🧠 PaddleOCR 설정
 ocr = PaddleOCR(

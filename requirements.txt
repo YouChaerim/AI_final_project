@@ -5,3 +5,8 @@ mediapipe
 numpy
 openai
 python-dotenv
+pillow
+pdf2image
+PyPDF2
+paddlepaddle
+paddleocr
