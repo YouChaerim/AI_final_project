@@ -1,24 +1,71 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*- (유니코드로 수정 2025/07/25)
 import streamlit as st
-from paddleocr import PaddleOCR
-import cv2
 import numpy as np
+import os
+import re
+import json5
+import cv2
 from PIL import Image
 from openai import OpenAI
-import re
-from pdf2image import convert_from_bytes
+from paddleocr import PaddleOCR
 from PyPDF2 import PdfReader
-import os
-import json5
+from pdf2image import convert_from_bytes
+from dotenv import load_dotenv  # ✅ 추가(2025/07/25)
+
+# ===== ✅ .env에서 환경변수 불러오기 =====
+load_dotenv(dotenv_path="C:/Users/user/Desktop/최종파일/AI_final_project/.env")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 
 # ===== 페이지 기본 설정 =====
 st.set_page_config(page_title="📄 OCR + GPT 요약/퀴즈 생성기", layout="centered")
 
+# ✅ file_uploader key 초기값 설정 (최초 1회만)
+if "file_key" not in st.session_state:
+    st.session_state.file_key = "uploader_1"
+
+# ✅ 완전한 새로고침(2025/07/25 수정)
+st.markdown("<div style='text-align:right'>", unsafe_allow_html=True)
+if st.button("🔄 전체 새로고침", key="refresh_all"):
+    keys_to_clear = [
+        "uploaded_file", "ocr_result_text", "summary_text", "quiz_content_input",
+        "summary", "summary_log", "quiz_data", "user_answers",
+        "confirmed_answers", "wrong_indices", "chat_logs", "graded"
+    ]
+    for k in keys_to_clear:
+        if k in st.session_state:
+            del st.session_state[k]
+    st.session_state.file_key = "uploader_" + str(np.random.randint(100000))
+    st.session_state.quiz_content_input = ""
+    st.rerun()
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ===== ✅ OpenAI 클라이언트 캐싱 함수 =====
+@st.cache_resource
+def get_openai_client():
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    api_key = os.getenv("OPENAI_API_KEY")  # ✅ 함수 안에서 직접 불러오기
+
+    if not api_key or api_key.lower() == "sorry":
+        st.error("❌ .env에서 유효한 OpenAI API 키를 불러올 수 없습니다.")
+        st.stop()
+
+    return OpenAI(api_key=api_key)
+
+# ✅ OpenAI 클라이언트 생성
+client = get_openai_client()
+
 # ===== OpenAI 및 OCR 캐싱 =====
 @st.cache_resource
 def get_openai_client():
-    api_key = "sㄴㄴㄴ"
+    api_key = os.getenv("OPENAI_API_KEY")  # ✅ .env에서 API 키 불러오기(2025/07/25)
+    if not api_key:
+        st.error("❌ .env 파일에서 OpenAI API 키를 찾을 수 없습니다.")
+        st.stop()
     return OpenAI(api_key=api_key)
+
 client = get_openai_client()
 
 @st.cache_resource
@@ -31,19 +78,6 @@ def get_ocr():
         ocr_version='PP-OCRv3'   
     )
 ocr = get_ocr()  # ✅ 최초 1회만 로드되고, 이후 재사용됨
-
-# ===== 새로고침 버튼 (전체 세션 초기화) =====
-if st.button("🔄 전체 새로고침", key="refresh_all"):
-    # 모든 상태 리셋
-    for k in [
-        "uploaded_file", "ocr_result_text", "summary_text", "quiz_content_input",
-        "summary", "summary_log", "quiz_data", "user_answers", "confirmed_answers",
-        "wrong_indices", "chat_logs", "graded"
-    ]:
-        if k in st.session_state:
-            del st.session_state[k]
-    st.rerun()
-
 
 # ===== 유틸 함수 =====
 def extract_pdf_text_if_possible(pdf_file):
@@ -163,7 +197,11 @@ with tab1:
     st.header("📄 OCR 기반 손글씨 인식 및 요약")
 
     # uploaded_file = st.file_uploader("📤 이미지 또는 PDF 업로드", type=["png", "jpg", "jpeg", "pdf"])
-    uploaded_file = st.file_uploader("📤 이미지 또는 PDF 업로드", type=["png", "jpg", "jpeg", "pdf"], key="uploaded_file")
+    uploaded_file = st.file_uploader(
+    "📤 이미지 또는 PDF 업로드",
+    type=["png", "jpg", "jpeg", "pdf"],
+    key=st.session_state.file_key  # ✅ 동적으로 바뀌는 key
+)
 
     clean_text = ""
 
@@ -198,7 +236,13 @@ with tab2:
     st.header("🧠 GPT 기반 퀴즈 생성기")
 
     quiz_count = st.slider("출제할 퀴즈 개수", 4, 10, 8)
-    content_input = st.text_area("✍️ 학습 내용을 입력하거나 OCR 요약 결과를 사용하세요", height=200, key="quiz_content_input")
+    content_input = st.text_area(
+    "✍️ 학습 내용을 입력하거나 OCR 요약 결과를 사용하세요",
+    value=st.session_state.get("quiz_content_input", ""),
+    height=200,
+    key="quiz_content_input"
+)
+
     st.markdown("✅ OCR 요약 결과가 있다면 자동으로 그 내용을 사용합니다.")
 
     if st.button("🧠 퀴즈 생성하기"):
@@ -239,6 +283,7 @@ with tab2:
                     if submitted:
                         st.session_state.user_answers[idx] = user_input
                         st.session_state.confirmed_answers[idx] = True
+
             else:
                 st.success(f"입력한 답: {st.session_state.user_answers[idx]}")
 
