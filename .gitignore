@@ -49,3 +49,10 @@ train20
 train21
 train22
 train23
+"*.pyc" 
+"__pycache__/" 
+__pycache__/ 
+*.pyc 
+maintest.py
+
+__pycache__
