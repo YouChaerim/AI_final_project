@@ -12,7 +12,7 @@ def load_base64(filename):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# ✅ 스타일 (mainpage 헤더 + 상단 UI 제거 + 밑줄 제거 포함)
+# ✅ 스타일 (네비게이션 → 같은 탭 이동용 onclick)
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
@@ -28,29 +28,30 @@ html, body {
 .block-container { padding-top: 0rem !important; }
 .container { max-width: 1200px; margin: auto; padding: 0px 40px 40px 40px; }
 
-/* ✅ 링크 밑줄 제거 */
-a {
-    text-decoration: none !important;
-}
+/* 링크 밑줄 제거 */
+a { text-decoration: none !important; }
 
-/* ✅ 헤더 영역 */
+/* 헤더 영역 */
 .top-nav {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 12px 0;
     margin-top: 8px;
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: rgba(255,255,255,0.9);
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 .nav-left { display: flex; align-items: center; gap: 60px; }
 .nav-menu { display: flex; gap: 36px; font-size: 18px; font-weight: 600; }
-.nav-menu div a {
+.nav-menu .nav-item {
     color: #333;
-    transition: all 0.2s ease;
-    text-decoration: none !important;
+    cursor: pointer;
+    transition: color 0.2s ease;
 }
-.nav-menu div:hover a { color: #FF9330; }
+.nav-menu .nav-item:hover,
+.nav-menu .active {
+    color: #FF9330;
+}
 .profile-group { display: flex; gap: 16px; align-items: center; }
 .profile-icon {
     background-color: #888;
@@ -60,7 +61,7 @@ a {
     cursor: pointer;
 }
 
-/* ✅ 카드 UI */
+/* 카드 UI */
 .icon-container {
     display: flex;
     justify-content: center;
@@ -96,7 +97,7 @@ a {
     color: #111;
 }
 
-/* ✅ 상단 UI 완전 제거 */
+/* 상단 UI 완전 제거 */
 [data-testid="collapsedControl"],
 [data-testid="stSidebar"] {
     display: none !important;
@@ -112,21 +113,21 @@ header > div:first-child {
 # ✅ 컨테이너 시작
 st.markdown('<div class="container">', unsafe_allow_html=True)
 
-# ✅ 헤더 영역
+# ✅ 헤더 영역 (onclick 으로 같은 탭에서 이동)
 st.markdown("""
 <div class="top-nav">
     <div class="nav-left">
-        <div style="font-size: 28px; font-weight: bold;">
-            <a href="/mainpage" style="color: #333;">🐾 딸깍공</a>
+        <div style="font-size:28px; font-weight:bold;" onclick="window.location.href='/mainpage'">
+            🐾 딸깍공
         </div>
         <div class="nav-menu">
-            <div><a href="/mainpage">메인페이지</a></div>
-            <div><a href="/공부_시작">공부 시작</a></div>
-            <div><a href="/필기">필기</a></div>
-            <div><a href="/저장폴더">저장폴더</a></div>
-            <div><a href="/퀴즈">퀴즈</a></div>
-            <div><a href="/리포트">리포트</a></div>
-            <div><a href="/랭킹">랭킹</a></div>
+            <div class="nav-item" onclick="window.location.href='/mainpage'">메인페이지</div>
+            <div class="nav-item" onclick="window.location.href='/공부_시작'">공부 시작</div>
+            <div class="nav-item active" onclick="window.location.href='/필기'">필기</div>
+            <div class="nav-item" onclick="window.location.href='/저장폴더'">저장폴더</div>
+            <div class="nav-item" onclick="window.location.href='/퀴즈'">퀴즈</div>
+            <div class="nav-item" onclick="window.location.href='/리포트'">리포트</div>
+            <div class="nav-item" onclick="window.location.href='/랭킹'">랭킹</div>
         </div>
     </div>
     <div class="profile-group">
@@ -138,17 +139,17 @@ st.markdown("""
 # ✅ 카드 UI
 st.markdown(f"""
 <div class="icon-container">
-    <div class="icon-card">
+    <div class="icon-card" onclick="window.location.href='/필기인식'">
         <img src="data:image/png;base64,{load_base64('pen.png')}">
-        <div>필기인식</div>
+        <div>PDF인식(요약)</div>
     </div>
-    <div class="icon-card">
+    <div class="icon-card" onclick="window.location.href='/저장폴더'">
         <img src="data:image/png;base64,{load_base64('icon_folder.png')}">
         <div>폴더</div>
     </div>
-    <div class="icon-card">
+    <div class="icon-card" onclick="window.location.href='/퀴즈'">
         <img src="data:image/png;base64,{load_base64('quiz.png')}">
-        <div>복습용 퀴즈</div>
+        <div>퀴즈</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
