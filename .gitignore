@@ -53,3 +53,6 @@ train23
 "__pycache__/" 
 __pycache__/ 
 *.pyc 
+maintest.py
+
+__pycache__
