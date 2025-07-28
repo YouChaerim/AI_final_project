@@ -4,6 +4,8 @@ from streamlit_webrtc import webrtc_streamer
 import av
 import cv2
 import time
+from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 from EyeControl import detect_blink
 from YawnControl import detect_yawn
 
@@ -155,18 +157,41 @@ with col2:
             async_processing=True,
         )
 
+
+
 # === 오른쪽: 타이머 & 집중도 & 팁 ===
 with col3:
     update_pomodoro()
     remaining = max(0, int(st.session_state.pomodoro_duration - (time.time() - st.session_state.pomodoro_start)))
     mins, secs = divmod(remaining, 60)
-
+    # ✅ 자동 새로고침 (1000ms = 1초마다 새로고침)
+    st_autorefresh(interval=1000, key="auto_refresh")
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### ⏱️ 뽀모도로 타이머")
     st.info(f"현재 상태: {st.session_state.pomodoro_mode}")
     st.write(f"⏰ 남은 시간: **{mins:02d}:{secs:02d}**")
+
     st.progress(remaining / st.session_state.pomodoro_duration)
     st.markdown('</div>', unsafe_allow_html=True)
+    
+    #openCV사용시
+    # 초기화
+    # if "focus_score" not in st.session_state:
+    #     st.session_state.focus_score = 100
+
+    # 프레임 받아오기 (예시용)
+    # ret, frame = cap.read()  # OpenCV 사용 시
+
+    # 감지 함수 실행
+    # blinked = detect_blink(frame)   # True/False
+    # yawned = detect_yawn(frame)     # True/False
+
+    # 점수 감소 로직
+    # if blinked:
+    #     st.session_state.focus_score = max(0, st.session_state.focus_score - 1)
+    # if yawned:
+    #     st.session_state.focus_score = max(0, st.session_state.focus_score - 2)
+
 
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### 🧠 집중도")
@@ -183,5 +208,3 @@ with col3:
     st.markdown("### 💡 집중 팁")
     st.markdown("- 눈을 자주 깜빡이세요\n- 물 한 잔 마시기\n- 스트레칭으로 전환")
     st.markdown('</div>', unsafe_allow_html=True)
-
-    st.button("🔁 타이머 초기화")
