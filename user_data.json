@@ -1,7 +1,7 @@
 {
-  "todo": "체크리스트로 변경",
-  "memo": "",
+  "todo": "📝체크리스트\n",
+  "memo": "빠른메모",
   "study_hour": 1,
   "study_minute": 30,
-  "dark_mode": false
+  "dark_mode": true
 }

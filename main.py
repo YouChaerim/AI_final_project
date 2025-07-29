@@ -2,8 +2,8 @@ import streamlit as st
 from streamlit_webrtc import webrtc_streamer
 import av
 import cv2
-from EyeControl import detect_blink
-from YawnControl import detect_yawn
+from AI_final_project.pagerntjd.EyeControl import detect_blink
+from AI_final_project.pagerntjd.YawnControl import detect_yawn
 
 st.set_page_config(page_title="📷 카메라 앱", layout="centered")
 

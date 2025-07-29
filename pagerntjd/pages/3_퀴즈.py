@@ -5,78 +5,116 @@ import os
 import re
 from dotenv import load_dotenv
 
+# === 다크모드 불러오기 ===
+if "user_data" not in st.session_state:
+    if os.path.exists("user_data.json"):
+        with open("user_data.json", "r", encoding="utf-8") as f:
+            st.session_state.user_data = json.load(f)
+    else:
+        st.session_state.user_data = {"dark_mode": False}
+
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = st.session_state.user_data.get("dark_mode", False)
+
+# === 테마 색상 지정 ===
+if st.session_state.dark_mode:
+    bg_color = "#1C1C1E"; font_color = "#F2F2F2"
+    nav_bg = "#2C2C2E"; card_bg = "#2C2C2E"; hover_bg = "#3A3A3C"
+    dark_orange = "#FF9330"; label_color = "white"
+else:
+    bg_color = "#FAFAFA"; font_color = "#333"
+    nav_bg = "rgba(255,255,255,0.9)"; card_bg = "white"; hover_bg = "#F5F5F5"
+    dark_orange = "#FF9330"; label_color = font_color
+
 # === 페이지 설정 ===
 st.set_page_config(page_title="딸깍공 퀴즈", layout="wide", initial_sidebar_state="collapsed")
 
 # === CSS 스타일 ===
-st.markdown("""
+st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
-html, body {
+
+html, body {{
     font-family: 'Noto Sans KR', sans-serif;
-    background-color: #FAFAFA;
-    color: #333;
+    background-color: {bg_color};
+    color: {font_color};
     zoom: 1.05;
     margin: 0;
-}
-.stApp { background-color: #FAFAFA; }
-.block-container { padding-top: 0 !important; }
-.container { max-width: 1200px; margin: auto; padding: 40px; }
-a { text-decoration: none !important; color: #333; }
+}}
+.stApp {{ background-color: {bg_color}; }}
+.block-container {{ padding-top: 0 !important; }}
+.container {{ max-width: 1200px; margin: auto; padding: 40px; }}
+a {{ text-decoration: none !important; color: {font_color}; }}
 
-.top-nav {
+.top-nav {{
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 12px 0;
     margin-top: -40px !important;
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: {nav_bg};
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-.nav-left { display: flex; align-items: center; gap: 60px; }
-.top-nav .nav-left > div:first-child a {
-    color: #000 !important;
+}}
+.nav-left {{ display: flex; align-items: center; gap: 60px; }}
+.top-nav .nav-left > div:first-child a {{
+    color: {font_color} !important;
     font-size: 28px;
     font-weight: bold;
-}
-.nav-menu {
+}}
+.nav-menu {{
     display: flex;
     gap: 36px;
     font-size: 18px;
     font-weight: 600;
-}
-.nav-menu div a {
-    color: #000 !important;
+}}
+.nav-menu div a {{
+    color: {font_color} !important;
     transition: all 0.2s ease;
-}
-.nav-menu div:hover a {
-    color: #FF9330 !important;
-}
-.profile-group {
+}}
+.nav-menu div:hover a {{
+    color: {dark_orange} !important;
+}}
+.profile-group {{
     display: flex; gap: 16px; align-items: center;
-}
-.profile-icon {
+}}
+.profile-icon {{
     background-color: #888;
     width: 36px;
     height: 36px;
     border-radius: 50%;
     cursor: pointer;
-}
-header, #MainMenu, [data-testid="stSidebar"], button[title="사이드바 토글"] {
-    display: none !important;
-}
-.stButton>button {
-    background-color: #FF9330;
+}}
+.stButton>button {{
+    background-color: {dark_orange};
     color: white;
     font-weight: 700;
     padding: 12px 36px;
     border-radius: 12px;
     font-size: 18px;
     margin-top: 20px;
-}
-.stButton>button:hover {
+}}
+.stButton>button:hover {{
     background-color: #e07e22;
-}
+}}
+header, [data-testid="stSidebar"], button[title="사이드바 토글"], #MainMenu {{
+    display: none !important;
+}}
+.stApp > header, .stApp > div:first-child {{
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}}
+
+/* ✅ 다크모드일 때 입력 필드 가독성 향상 (글자 완전 흰색) */
+{f"""
+[data-baseweb="select"] > div,
+input[type="number"],
+textarea,
+input[type="text"] {{
+    background-color: #2C2C2E !important;
+    color: #FFFFFF !important;
+    border: 1px solid #555 !important;
+}}
+""" if st.session_state.dark_mode else ""}
 </style>
 """, unsafe_allow_html=True)
 
@@ -84,7 +122,7 @@ header, #MainMenu, [data-testid="stSidebar"], button[title="사이드바 토글"
 st.markdown('<div class="container">', unsafe_allow_html=True)
 
 # === 네비게이션 바 ===
-st.markdown("""
+st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
     <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
@@ -199,7 +237,6 @@ def show_all_questions():
     st.subheader("📝 퀴즈 문제")
     for i, q in enumerate(st.session_state.quiz_data):
         st.markdown(f"**{i+1}. {q['question']}**")
-
         q_type = q.get("type", "").strip()
         if q_type in ["객관식", "OX"] and "options" in q:
             st.session_state.user_answers[i] = st.radio(
