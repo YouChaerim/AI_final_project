@@ -1,0 +1,1 @@
+streamlit run "./folder_page.py"
