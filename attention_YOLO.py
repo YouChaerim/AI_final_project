@@ -59,7 +59,10 @@ drowsy_window = deque(maxlen=DROWSY_FRAMES)
 
 # 개인화된 감지 기준
 threshold_ratio = user_data["threshold_ratio"]
-min_yawn_duration = int(FPS * user_data["min_duration_sec"])
+# ✅ 평균 하품 지속시간 기반으로 개인화된 최소 하품 프레임 수 계산
+dynamic_sec = max(0.5, min(user_data["avg_yawn_duration"] - 0.2, 2.5))  # 0.5초 이상 2.5초 이하
+user_data["min_duration_sec"] = dynamic_sec
+min_yawn_duration = int(FPS * dynamic_sec)
 yawning = False
 sleeping = False
 yawn_start_time = None
