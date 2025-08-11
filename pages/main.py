@@ -113,10 +113,14 @@ USER_DATA_PATH = f"user_yawn_data_{USER_ID}.json"
 MODEL_PATH = "runs/detect/train24-mixtrain/weights/best.pt"
 YAWN_CLASS_INDEX = 2       # 하품
 DROWSY_CLASS_INDEX = 3     # 졸음
-CONF_THRESH = 0.43
-IMGSZ = 512                # 640 → 512로 낮춰 지연 감소
+CONF_THRESH = 0.45
+IMGSZ = 640                # 학습값과 동일 권장
 TARGET_FPS = 30
-SKIP = 2                   # 프레임 스킵: 2 프레임마다 1번 추론
+SKIP = 1                   # 정확도 우선(끊기면 2)
+
+# 카메라 캡처(정확도용) vs 화면 표시(UI) 분리
+cam_cap_w, cam_cap_h   = 1280, 720   # 브라우저에 요청할 캡처 해상도
+cam_disp_w, cam_disp_h = 720, 405    # 화면에만 이렇게 축소해서 표시
 
 @st.cache_resource(show_spinner=False)
 def load_model():
@@ -167,7 +171,7 @@ if "analytics" not in st.session_state:
         "drowsy_window": deque(maxlen=drowsy_frames),
         "threshold_ratio": float(user_data.get("threshold_ratio", 0.4)),
         "avg_yawn_duration": float(user_data.get("avg_yawn_duration", 1.0)),
-        "min_yawn_duration": int(TARGET_FPS * max(0.5, min(user_data.get("avg_yawn_duration", 1.0) - 0.2, 2.5))),
+        "min_yawn_duration": int(TARGET_FPS * max(0.6, min(user_data.get("avg_yawn_duration", 1.0) * 0.9, 2.0))),
         "yawning": False,
         "sleeping": False,
         "yawn_start_time": None,
@@ -180,6 +184,9 @@ if "analytics" not in st.session_state:
         # 콜백→UI 전달 버퍼
         "latest_attention": 100,
         "fatigue_bump": 0,
+        # 히스테리시스
+        "threshold_ratio_on": 0.45,
+        "threshold_ratio_off": 0.35,
     }
 
 A = st.session_state.analytics
@@ -270,7 +277,6 @@ def set_state(new_yawning: bool, new_sleeping: bool, attention_on_event: int):
 
     A["yawning"] = new_yawning
     A["sleeping"] = new_sleeping
-    # UI에 전달할 피로도 증가 누적(메인에서 반영)
     if A["yawning"] or A["sleeping"]:
         A["fatigue_bump"] += 1
 
@@ -280,13 +286,16 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     A["frame_idx"] += 1
     run_infer = (A["frame_idx"] % SKIP == 0)
 
-    is_yawning = A["yawning"]
-    is_drowsy  = A["sleeping"]
-
     if run_infer:
         results = model.predict(
-            img, conf=CONF_THRESH, imgsz=IMGSZ, verbose=False,
-            max_det=10, agnostic_nms=True
+            img,
+            conf=CONF_THRESH,
+            iou=0.5,
+            imgsz=IMGSZ,
+            classes=[YAWN_CLASS_INDEX, DROWSY_CLASS_INDEX],  # 필요한 클래스만
+            verbose=False,
+            max_det=10,
+            agnostic_nms=False
             # , device=0  # GPU 사용시
         )[0]
 
@@ -309,7 +318,7 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
                 cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(img, label, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-        # 하품 판단(가중치 + 연속 프레임)
+        # 하품 판단(히스테리시스 + 연속 프레임)
         weights = A["weights"]
         weighted_sum = sum(w for yawning, w in zip(A["yawn_window"], weights) if yawning)
         weighted_ratio = weighted_sum / (sum(weights) if sum(weights) else 1.0)
@@ -318,8 +327,9 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
             if status: continuous_count += 1
             else: break
 
-        new_yawning = A["yawning"]
-        if weighted_ratio > A["threshold_ratio"] and continuous_count > A["min_yawn_duration"]:
+        if (not A["yawning"] and weighted_ratio > A["threshold_ratio_on"]  and continuous_count > A["min_yawn_duration"]):
+            new_yawning = True
+        elif (A["yawning"]    and weighted_ratio > A["threshold_ratio_off"] and continuous_count > A["min_yawn_duration"]):
             new_yawning = True
         else:
             new_yawning = False
@@ -341,10 +351,13 @@ def video_frame_callback(frame: av.VideoFrame) -> av.VideoFrame:
     cv2.putText(img, f"Status: {status_text}", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, status_color, 3)
     cv2.putText(img, f"Attention: {attention_score}", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255,255,255), 3)
 
-    return av.VideoFrame.from_ndarray(img, format="bgr24")
+    # ★ 화면 표시용 축소 (정확도/추론엔 영향 없음)
+    small = cv2.resize(img, (cam_disp_w, cam_disp_h), interpolation=cv2.INTER_AREA)
+    return av.VideoFrame.from_ndarray(small, format="bgr24")
 
 # ===== 레이아웃 =====
-col1, col2, col3 = st.columns([1, 2.3, 1])
+# 좌(목표/팁) - 중(카메라) - 우(타이머/집중도)
+col1, col2, col3 = st.columns([1, 1.3, 1])
 
 with col1:
     st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
@@ -367,13 +380,11 @@ with col1:
         ''', unsafe_allow_html=True
     )
 
-# 카메라 박스 크기
-cam_height = 1280
-cam_width  = 640
-
 with col2:
+    # 가운데 카메라 상자(표시용 크기만 사용)
     st.markdown(
-        f'<div style="width:{cam_width}px;height:{cam_height}px;display:flex;align-items:center;justify-content:center;margin:0 auto 0 auto;padding:0;">',
+        f'<div style="width:{cam_disp_w}px;height:{cam_disp_h}px;display:flex;'
+        f'align-items:center;justify-content:center;margin:0 auto;padding:0;">',
         unsafe_allow_html=True
     )
     if st.session_state.start_camera:
@@ -381,14 +392,14 @@ with col2:
             key="camera",
             video_frame_callback=video_frame_callback,
             media_stream_constraints={
-                "video": {"width": {"ideal": cam_width}, "height": {"ideal": cam_height}},
+                "video": {"width": {"ideal": cam_cap_w}, "height": {"ideal": cam_cap_h}},  # 캡처 해상도(정확도)
                 "audio": False
             },
             async_processing=True,
         )
     else:
         st.markdown(
-            f'<div style="width:{cam_width}px; height:{cam_height}px; background: transparent;"></div>',
+            f'<div style="width:{cam_disp_w}px; height:{cam_disp_h}px; background: transparent;"></div>',
             unsafe_allow_html=True
         )
     st.markdown('</div>', unsafe_allow_html=True)
@@ -418,7 +429,7 @@ with col3:
     )
     st.progress(remaining / st.session_state.pomodoro_duration if st.session_state.pomodoro_duration > 0 else 0.0)
 
-    # === 콜백→UI 전달값을 여기서만 session_state에 반영(콜백은 쓰지 않음) ===
+    # 콜백→UI 전달값 반영
     st.session_state.focus_score = int(A.get("latest_attention", st.session_state.get("focus_score", 100)))
     if A.get("fatigue_bump", 0) > 0:
         st.session_state.fatigue_count += A["fatigue_bump"]
