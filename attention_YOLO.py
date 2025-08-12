@@ -101,7 +101,6 @@ while True:
     sleep_count = sum(1 for event in sleep_events[initial_sleep_len:] if event["type"] in ["end", "drowys_end"])
     attention_score = BASE_ATTENTION - (5 * sleep_count) - (2 * yawn_count)
 
-  
 
     # 하품 판단
     weighted_sum = sum(w for yawning, w in zip(yawn_window, weights) if yawning)
@@ -161,8 +160,6 @@ while True:
                 sleep_start_time = None
                 
                 # 집중도 초기값
-
-
 
 
     cv2.putText(frame, f"Attention: {attention_score}", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
