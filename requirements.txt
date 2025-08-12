@@ -12,4 +12,6 @@ PyPDF2
 paddlepaddle
 paddleocr
 Ultralytics
-streamlit-autorefresh
+fastapi
+uvicorn
+requests
