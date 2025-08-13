@@ -11,8 +11,14 @@ if "user_data" not in st.session_state:
     else:
         st.session_state.user_data = {"dark_mode": False}
 
+# 캐릭터 헤더용 기본 키 보강
+ud = st.session_state.user_data
+ud.setdefault("active_char", "rabbit")   # bear/cat/rabbit/shiba
+ud.setdefault("owned_hats", [])          # 예: ["cap"]
+ud.setdefault("equipped_hat", None)      # 예: "cap"
+
 if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = st.session_state.user_data.get("dark_mode", False)
+    st.session_state.dark_mode = ud.get("dark_mode", False)
 
 # ✅ 테마 색상 지정
 if st.session_state.dark_mode:
@@ -34,7 +40,60 @@ def load_base64(filename):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
-# ✅ 스타일 + 상단 하얀줄 제거
+# === 헤더 아바타 헬퍼 ===
+def _resolve_assets_root():
+    here = os.path.dirname(__file__)
+    cands = [
+        os.path.abspath(os.path.join(here, "assets")),
+        os.path.abspath(os.path.join(here, "..", "assets")),
+    ]
+    for p in cands:
+        if os.path.isdir(p):
+            return p
+    return cands[0]
+
+ASSETS_ROOT = _resolve_assets_root()
+
+def _to_data_uri(path: str) -> str:
+    with open(path, "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+
+def get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
+    """
+    전용 파일 우선 탐색:
+      - assets/items/hats/{char}{sep}{hat_id}.png
+      - assets/characters/{char}{sep}{hat_id}.png
+      - assets/characters/{char}.png
+    sep ∈ {"", "_", "-"}  /  'shiba'는 'siba'도 자동 지원
+    """
+    keys = [char_key] + (["siba"] if char_key == "shiba" else [])
+    cands = []
+    if hat_id:
+        for k in keys:
+            for sep in ["", "_", "-"]:
+                cands += [
+                    os.path.join(ASSETS_ROOT, "items", "hats", f"{k}{sep}{hat_id}.png"),
+                    os.path.join(ASSETS_ROOT, "characters", f"{k}{sep}{hat_id}.png"),
+                ]
+    for k in keys:
+        cands.append(os.path.join(ASSETS_ROOT, "characters", f"{k}.png"))
+
+    for p in cands:
+        if os.path.exists(p):
+            return _to_data_uri(p)
+
+    # fallback
+    return "data:image/svg+xml;utf8," \
+           "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>"
+
+def current_avatar_uri() -> str:
+    char_key = ud.get("active_char", "rabbit")
+    hat_id = ud.get("equipped_hat")
+    if hat_id and (hat_id in ud.get("owned_hats", [])):
+        return get_char_image_uri(char_key, hat_id)
+    return get_char_image_uri(char_key)
+
+# ✅ 스타일 + 상단 하얀줄 제거 + 헤더 아바타/이동
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
@@ -83,16 +142,16 @@ a {{ text-decoration: none !important; color: {font_color}; }}
 .nav-menu div:hover a {{
     color: {dark_orange} !important;
 }}
-.profile-group {{
-    display: flex; gap: 16px; align-items: center;
-}}
+
+/* ✅ 헤더 오른쪽 동그라미 자체를 살짝 왼쪽으로 */
+.profile-group {{ display: flex; gap: 16px; align-items: center; margin-right: 12px; }}
 .profile-icon {{
-    background-color: #888;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    cursor: pointer;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg,#DDEFFF,#F8FBFF);
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }}
+.profile-icon img {{ width: 100%; height: 100%; object-fit: contain; image-rendering: auto; }}
 
 /* 아이콘 카드 스타일 */
 .icon-row {{
@@ -147,7 +206,8 @@ header, .st-emotion-cache-18ni7ap, .st-emotion-cache-6qob1r {{
 # ✅ 컨테이너 시작
 st.markdown('<div class="container">', unsafe_allow_html=True)
 
-# ✅ 상단 네비게이션 바
+# ✅ 상단 네비게이션 바 (캐릭터 아바타 적용)
+header_avatar_uri = current_avatar_uri()
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
@@ -157,7 +217,7 @@ st.markdown(f"""
     <div class="nav-menu">
       <div><a href="/"   target="_self">메인페이지</a></div>
       <div><a href="/main"   target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle"       target="_self">필기</a></div>
+      <div><a href="/ocr_paddle"       target="_self">PDF요약</a></div>
       <div><a href="/folder_page"   target="_self">저장폴더</a></div>
       <div><a href="/quiz"       target="_self">퀴즈</a></div>
       <div><a href="/report"     target="_self">리포트</a></div>
@@ -165,7 +225,9 @@ st.markdown(f"""
     </div>
   </div>
   <div class="profile-group">
-    <div class="profile-icon" title="내 프로필"></div>
+    <div class="profile-icon" title="내 캐릭터">
+      <img src="{header_avatar_uri}" alt="avatar"/>
+    </div>
   </div>
 </div>
 """, unsafe_allow_html=True)
