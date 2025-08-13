@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import base64
 
 # ====== 세션 상태 초기화 ======
 if "user_data" not in st.session_state:
@@ -16,14 +17,20 @@ if "user_data" not in st.session_state:
             "dark_mode": False
         }
 
-if "study_hour" not in st.session_state.user_data:
-    st.session_state.user_data["study_hour"] = 0
-if "study_minute" not in st.session_state.user_data:
-    st.session_state.user_data["study_minute"] = 0
+# 캐릭터/상점 관련 기본값 채우기(없으면 추가)
+ud = st.session_state.user_data
+ud.setdefault("active_char", "rabbit")     # bear/cat/rabbit/shiba
+ud.setdefault("owned_hats", [])            # ["cap", ...]
+ud.setdefault("equipped_hat", None)        # "cap" or None
+
+if "study_hour" not in ud:
+    ud["study_hour"] = 0
+if "study_minute" not in ud:
+    ud["study_minute"] = 0
 
 # ====== 다크모드 설정 불러오기 ======
 if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = st.session_state.user_data.get("dark_mode", False)
+    st.session_state.dark_mode = ud.get("dark_mode", False)
 
 # ====== 테마 색상 설정 ======
 if st.session_state.dark_mode:
@@ -41,7 +48,60 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ====== 스타일 지정 ======
+# ====== assets 경로 처리 ======
+def _resolve_assets_root():
+    here = os.path.dirname(__file__)
+    cands = [
+        os.path.abspath(os.path.join(here, "assets")),          # 메인 루트에 assets/
+        os.path.abspath(os.path.join(here, "..", "assets")),    # pages/ 내부에서 호출 시 ../assets
+    ]
+    for p in cands:
+        if os.path.isdir(p):
+            return p
+    return cands[0]
+
+ASSETS_ROOT = _resolve_assets_root()
+
+def _to_data_uri(path: str) -> str:
+    with open(path, "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+
+def get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
+    """
+    장착 모자가 있으면 전용 이미지 우선, 없으면 기본 이미지.
+    탐색 위치:
+      - assets/items/hats/{char}{sep}{hat_id}.png
+      - assets/characters/{char}{sep}{hat_id}.png
+      - assets/characters/{char}.png
+    sep ∈ {"", "_", "-"}
+    'shiba'는 'siba' 철자도 자동 지원.
+    """
+    keys = [char_key] + (["siba"] if char_key == "shiba" else [])
+    cands = []
+    if hat_id:
+        for k in keys:
+            for sep in ["", "_", "-"]:
+                cands.append(os.path.join(ASSETS_ROOT, "items", "hats", f"{k}{sep}{hat_id}.png"))
+                cands.append(os.path.join(ASSETS_ROOT, "characters", f"{k}{sep}{hat_id}.png"))
+    for k in keys:
+        cands.append(os.path.join(ASSETS_ROOT, "characters", f"{k}.png"))
+
+    for p in cands:
+        if os.path.exists(p):
+            return _to_data_uri(p)
+
+    # fallback
+    return "data:image/svg+xml;utf8," \
+           "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>"
+
+def current_avatar_uri() -> str:
+    char_key = ud.get("active_char", "rabbit")
+    hat_id = ud.get("equipped_hat")
+    if hat_id and (hat_id in ud.get("owned_hats", [])):
+        return get_char_image_uri(char_key, hat_id)
+    return get_char_image_uri(char_key, None)
+
+# ====== 스타일 지정 (헤더 + 프로필 원형에 캐릭터 이미지 적용) ======
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
@@ -56,6 +116,8 @@ html, body {{
 .block-container {{ padding-top: 0 !important; }}
 .container {{ max-width: 1200px; margin: auto; padding: 40px; }}
 a {{ text-decoration: none !important; color: {font_color}; }}
+
+/* 네비게이션 바(헤더) */
 .top-nav {{
     display: flex;
     justify-content: space-between;
@@ -76,14 +138,18 @@ a {{ text-decoration: none !important; color: {font_color}; }}
 .nav-menu div:hover a {{
     color: #FF9330 !important;
 }}
-.profile-group {{ display: flex; gap: 16px; align-items: center; }}
+
+/* 프로필 원형(동그라미 자체도 살짝 왼쪽으로) */
+.profile-group {{ display: flex; gap: 16px; align-items: center; margin-right: 12px; }}
 .profile-icon {{
-    background-color: #888;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    cursor: pointer;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg,#DDEFFF,#F8FBFF);
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }}
+.profile-icon img {{ width: 100%; height: 100%; object-fit: contain; image-rendering: auto; }}
+
+/* 버튼/카드 등 */
 .stLoginBtn button {{
     font-size: 17px !important;
     font-weight: 600 !important;
@@ -97,14 +163,12 @@ a {{ text-decoration: none !important; color: {font_color}; }}
     height: 36px;
     margin-left: 18px;
 }}
-.stLoginBtn button:hover {{
-    background: #FFF5E5 !important;
-    color: #FF9330 !important;
-}}
+.stLoginBtn button:hover {{ background: #FFF5E5 !important; color: #FF9330 !important; }}
+
 .main-box {{
     background-color: {dark_orange};
     border-radius: 14px;
-    padding: 90px 0 140px 0;   /* 높이 키움: 위, 아래 패딩 조절 */
+    padding: 90px 0 140px 0;
     text-align: center;
     color: white;
     font-size: 36px;
@@ -134,7 +198,6 @@ header {{ display: none !important; }}
 label, .stTextInput label, .stTextArea label, .stSelectbox label {{
     color: {label_color} !important; font-weight: 600;
 }}
-/* 버튼 간격 살짝 띄우기 */
 .button-row > div {{ padding-right: 6px !important; }}
 </style>
 """, unsafe_allow_html=True)
@@ -142,7 +205,8 @@ label, .stTextInput label, .stTextArea label, .stSelectbox label {{
 # ====== 본문 컨테이너 시작 ======
 st.markdown('<div class="container">', unsafe_allow_html=True)
 
-# ====== 네비게이션 바 ======
+# ====== 네비게이션 바 (헤더 스니펫: 캐릭터 이미지 적용) ======
+header_avatar_uri = current_avatar_uri()
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
@@ -150,7 +214,7 @@ st.markdown(f"""
     <div class="nav-menu">
       <div><a href="/" target="_self">메인페이지</a></div>
       <div><a href="/main" target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle" target="_self">필기</a></div>
+      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
       <div><a href="/folder_page" target="_self">저장폴더</a></div>
       <div><a href="/quiz" target="_self">퀴즈</a></div>
       <div><a href="/report" target="_self">리포트</a></div>
@@ -158,7 +222,9 @@ st.markdown(f"""
     </div>
   </div>
   <div class="profile-group">
-    <div class="profile-icon" title="내 프로필"></div>
+    <div class="profile-icon" title="내 캐릭터">
+      <img src="{header_avatar_uri}" alt="avatar"/>
+    </div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -173,7 +239,7 @@ with nav_login:
     login_btn_col = st.columns([10, 1])[1]
     with login_btn_col:
         if st.button("로그인", key="go_login", help="로그인 페이지로 이동", use_container_width=True):
-            st.switch_page("pages/9_login.py")
+            st.switch_page("pages/login_page.py")    # <--- 파일명만 수정!
 
 # ----- 메인 콘텐츠 -----
 col1, col2 = st.columns([2.5, 1])
@@ -190,19 +256,18 @@ with col1:
 with col2:
     if not st.session_state.get("edit_mode", False):
         st.markdown(
-            f"<div class='right-card'>📌 <b>오늘 할 일</b><br>{st.session_state.user_data['todo']}</div>",
+            f"<div class='right-card'>📌 <b>오늘 할 일</b><br>{ud['todo']}</div>",
             unsafe_allow_html=True
         )
         st.markdown(
-            f"<div class='right-card'>🗓 <b>빠른 메모</b><br>{st.session_state.user_data['memo']}</div>",
+            f"<div class='right-card'>🗓 <b>빠른 메모</b><br>{ud['memo']}</div>",
             unsafe_allow_html=True
         )
-        h, m = st.session_state.user_data["study_hour"], st.session_state.user_data["study_minute"]
+        h, m = ud["study_hour"], ud["study_minute"]
         st.markdown(
             f"<div class='right-card'>⏰ <b>오늘 공부시간</b><br>{h}시간 {m}분</div>",
             unsafe_allow_html=True
         )
-        # "변경하기"와 "투두리스트" 버튼을 한 줄에 옆으로 배치
         btn_col1, btn_col2 = st.columns([1, 1])
         with btn_col1:
             if st.button("✏️ 변경하기", use_container_width=True):
@@ -213,19 +278,19 @@ with col2:
                 st.switch_page("/투두리스트")
     else:
         with st.form("save_form"):
-            todo = st.text_area("📝 오늘 할 일", value=st.session_state.user_data["todo"])
-            memo = st.text_area("🗒 빠른 메모", value=st.session_state.user_data["memo"])
-            hour = st.selectbox("공부 시간(시간)", list(range(0,13)), index=st.session_state.user_data["study_hour"])
-            minute = st.selectbox("공부 시간(분)", list(range(0,61)), index=st.session_state.user_data["study_minute"])
+            todo = st.text_area("📝 오늘 할 일", value=ud["todo"])
+            memo = st.text_area("🗒 빠른 메모", value=ud["memo"])
+            hour = st.selectbox("공부 시간(시간)", list(range(0,13)), index=ud["study_hour"])
+            minute = st.selectbox("공부 시간(분)", list(range(0,61)), index=ud["study_minute"])
             if st.form_submit_button("저장하기"):
-                st.session_state.user_data.update({
+                ud.update({
                     "todo": todo,
                     "memo": memo,
                     "study_hour": hour,
                     "study_minute": minute
                 })
                 with open("user_data.json", "w", encoding="utf-8") as f:
-                    json.dump(st.session_state.user_data, f, ensure_ascii=False, indent=2)
+                    json.dump(ud, f, ensure_ascii=False, indent=2)
                 st.session_state.edit_mode = False
                 st.rerun()
 
@@ -233,7 +298,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 if st.button("🌗 다크모드 전환", key="dark_toggle"):
     st.session_state.dark_mode = not st.session_state.dark_mode
-    st.session_state.user_data["dark_mode"] = st.session_state.dark_mode
+    ud["dark_mode"] = st.session_state.dark_mode
     with open("user_data.json", "w", encoding="utf-8") as f:
-        json.dump(st.session_state.user_data, f, ensure_ascii=False, indent=2)
+        json.dump(ud, f, ensure_ascii=False, indent=2)
     st.rerun()

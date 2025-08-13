@@ -1,8 +1,11 @@
+# pages/quiz_page.py  (파일명은 현재 페이지 이름에 맞게 사용하세요)
+# -*- coding: utf-8 -*-
 import streamlit as st
 import openai
 import json
 import os
 import re
+import base64
 from dotenv import load_dotenv
 
 # === 다크모드 불러오기 ===
@@ -13,23 +16,83 @@ if "user_data" not in st.session_state:
     else:
         st.session_state.user_data = {"dark_mode": False}
 
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = st.session_state.user_data.get("dark_mode", False)
+# 캐릭터 헤더용 기본 키 보강
+ud = st.session_state.user_data
+ud.setdefault("active_char", "rabbit")   # bear/cat/rabbit/shiba
+ud.setdefault("owned_hats", [])          # 예: ["cap"]
+ud.setdefault("equipped_hat", None)      # 예: "cap"
 
-# === 테마 색상 지정 ===
-if st.session_state.dark_mode:
-    bg_color = "#1C1C1E"; font_color = "#F2F2F2"
-    nav_bg = "#2C2C2E"; card_bg = "#2C2C2E"; hover_bg = "#3A3A3C"
-    dark_orange = "#FF9330"; label_color = "white"
-else:
-    bg_color = "#FAFAFA"; font_color = "#333"
-    nav_bg = "rgba(255,255,255,0.9)"; card_bg = "white"; hover_bg = "#F5F5F5"
-    dark_orange = "#FF9330"; label_color = font_color
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = ud.get("dark_mode", False)
 
 # === 페이지 설정 ===
 st.set_page_config(page_title="딸깍공 퀴즈", layout="wide", initial_sidebar_state="collapsed")
 
-# === CSS 스타일 ===
+# === 테마 색상 지정 (공통 헤더 규격에 맞춤) ===
+if st.session_state.dark_mode:
+    bg_color = "#1C1C1E"; font_color = "#F2F2F2"
+    nav_bg = "#2C2C2E"; card_bg = "#2C2C2E"; hover_bg = "#3A3A3C"
+    dark_orange = "#FF9330"; label_color = "white"
+    nav_link = "#F2F2F2"  # 공통 헤더 메뉴 링크 색
+else:
+    bg_color = "#FAFAFA"; font_color = "#333"
+    nav_bg = "rgba(255,255,255,0.9)"; card_bg = "white"; hover_bg = "#F5F5F5"
+    dark_orange = "#FF9330"; label_color = font_color
+    nav_link = "#000"      # 공통 헤더 메뉴 링크 색
+
+# === 아바타 이미지 헬퍼 ===
+def _resolve_assets_root():
+    here = os.path.dirname(__file__)
+    cands = [
+        os.path.abspath(os.path.join(here, "assets")),
+        os.path.abspath(os.path.join(here, "..", "assets")),
+    ]
+    for p in cands:
+        if os.path.isdir(p):
+            return p
+    return cands[0]
+
+ASSETS_ROOT = _resolve_assets_root()
+
+def _to_data_uri(path: str) -> str:
+    with open(path, "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+
+def get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
+    """
+    전용 파일 우선 탐색:
+      - assets/items/hats/{char}{sep}{hat_id}.png
+      - assets/characters/{char}{sep}{hat_id}.png
+      - assets/characters/{char}.png
+    sep ∈ {"", "_", "-"}  /  'shiba'는 'siba'도 자동 지원
+    """
+    keys = [char_key] + (["siba"] if char_key == "shiba" else [])
+    cands = []
+    if hat_id:
+        for k in keys:
+            for sep in ["", "_", "-"]:
+                cands += [
+                    os.path.join(ASSETS_ROOT, "items", "hats", f"{k}{sep}{hat_id}.png"),
+                    os.path.join(ASSETS_ROOT, "characters", f"{k}{sep}{hat_id}.png"),
+                ]
+    for k in keys:
+        cands.append(os.path.join(ASSETS_ROOT, "characters", f"{k}.png"))
+
+    for p in cands:
+        if os.path.exists(p):
+            return _to_data_uri(p)
+
+    return "data:image/svg+xml;utf8," \
+           "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>"
+
+def current_avatar_uri() -> str:
+    char_key = ud.get("active_char", "rabbit")
+    hat_id = ud.get("equipped_hat")
+    if hat_id and (hat_id in ud.get("owned_hats", [])):
+        return get_char_image_uri(char_key, hat_id)
+    return get_char_image_uri(char_key)
+
+# === CSS 스타일 (공통 헤더 규격) ===
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
@@ -38,7 +101,7 @@ html, body {{
     font-family: 'Noto Sans KR', sans-serif;
     background-color: {bg_color};
     color: {font_color};
-    zoom: 1.05;
+    zoom: 1.10;  /* 공통 */
     margin: 0;
 }}
 .stApp {{ background-color: {bg_color}; }}
@@ -46,44 +109,51 @@ html, body {{
 .container {{ max-width: 1200px; margin: auto; padding: 40px; }}
 a {{ text-decoration: none !important; color: {font_color}; }}
 
+header, [data-testid="stSidebar"], [data-testid="stToolbar"], #MainMenu {{ display: none !important; }}
+.stApp > header, .stApp > div:first-child {{
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}}
+
+/* ===== 상단 네비게이션 바 (공통 헤더) ===== */
 .top-nav {{
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 0;
-    margin-top: -40px !important;
+    padding: 12px 0;                 /* 공통: 상단 패딩 */
+    margin-top: 40px !important;     /* 공통: 위치 */
     background-color: {nav_bg};
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }}
-.nav-left {{ display: flex; align-items: center; gap: 60px; }}
+.nav-left {{ display: flex; align-items: center; gap: 60px; }}  /* 공통 간격 */
 .top-nav .nav-left > div:first-child a {{
-    color: {font_color} !important;
-    font-size: 28px;
-    font-weight: bold;
+    color: #000 !important;          /* 공통: 로고 텍스트 색 고정 */
+    font-size: 28px;                 /* 공통 크기 */
+    font-weight: bold;               /* 공통 볼드 */
 }}
 .nav-menu {{
     display: flex;
-    gap: 36px;
+    gap: 36px;                       /* 공통 간격 */
     font-size: 18px;
     font-weight: 600;
 }}
 .nav-menu div a {{
-    color: {font_color} !important;
+    color: {nav_link} !important;    /* 라이트/다크 연동 */
     transition: all 0.2s ease;
 }}
-.nav-menu div:hover a {{
-    color: {dark_orange} !important;
-}}
-.profile-group {{
-    display: flex; gap: 16px; align-items: center;
-}}
+.nav-menu div:hover a {{ color: {dark_orange} !important; }}
+
+/* 우측 프로필(동그라미도 살짝 왼쪽으로) */
+.profile-group {{ display: flex; gap: 16px; align-items: center; margin-right: 12px; }}
 .profile-icon {{
-    background-color: #888;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    cursor: pointer;
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg,#DDEFFF,#F8FBFF);
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }}
+.profile-icon img {{ width: 100%; height: 100%; object-fit: contain; image-rendering: auto; }}
+
+/* 버튼 톤(기존 유지) */
 .stButton>button {{
     background-color: {dark_orange};
     color: white;
@@ -93,18 +163,9 @@ a {{ text-decoration: none !important; color: {font_color}; }}
     font-size: 18px;
     margin-top: 20px;
 }}
-.stButton>button:hover {{
-    background-color: #e07e22;
-}}
-header, [data-testid="stSidebar"], button[title="사이드바 토글"], #MainMenu {{
-    display: none !important;
-}}
-.stApp > header, .stApp > div:first-child {{
-    margin-top: 0 !important;
-    padding-top: 0 !important;
-}}
+.stButton>button:hover {{ filter: brightness(0.95); }}
 
-/* ✅ 다크모드일 때 입력 필드 가독성 향상 (글자 완전 흰색) */
+/* 다크모드 입력 필드 톤 (있으면 적용) */
 {'''
 [data-baseweb="select"] > div,
 input[type="number"],
@@ -115,32 +176,36 @@ input[type="text"] {
     border: 1px solid #555 !important;
 }
 ''' if st.session_state.dark_mode else ''}
+
 </style>
 """, unsafe_allow_html=True)
 
-# === 컨테이너 시작 ===
-st.markdown('<div class="container">', unsafe_allow_html=True)
-
-# === 네비게이션 바 ===
+# === 네비게이션 바 (헤더는 컨테이너 밖) ===
+header_avatar_uri = current_avatar_uri()
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
     <div><a href="/" target="_self">🐾 딸깍공</a></div>
     <div class="nav-menu">
-      <div><a href="/"   target="_self">메인페이지</a></div>
-      <div><a href="/main"   target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle"       target="_self">필기</a></div>
-      <div><a href="/folder_page"   target="_self">저장폴더</a></div>
-      <div><a href="/quiz"       target="_self">퀴즈</a></div>
-      <div><a href="/report"     target="_self">리포트</a></div>
-      <div><a href="/ranking"       target="_self">랭킹</a></div>
+      <div><a href="/"            target="_self">메인페이지</a></div>
+      <div><a href="/main"        target="_self">공부 시작</a></div>
+      <div><a href="/ocr_paddle"  target="_self">PDF요약</a></div>
+      <div><a href="/folder_page" target="_self">저장폴더</a></div>
+      <div><a href="/quiz"        target="_self">퀴즈</a></div>
+      <div><a href="/report"      target="_self">리포트</a></div>
+      <div><a href="/ranking"     target="_self">랭킹</a></div>
     </div>
   </div>
   <div class="profile-group">
-    <div class="profile-icon" title="내 프로필"></div>
+    <div class="profile-icon" title="내 프로필">
+      <img src="{header_avatar_uri}" alt="avatar"/>
+    </div>
   </div>
 </div>
 """, unsafe_allow_html=True)
+
+# === 컨테이너 시작 (본문은 헤더와 분리) ===
+st.markdown('<div class="container">', unsafe_allow_html=True)
 
 # === OpenAI API 준비 ===
 load_dotenv()
