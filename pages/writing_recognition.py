@@ -133,8 +133,13 @@ if uploaded_file:
     with open(tmp_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
-    ocr_model = PaddleOCR(use_angle_cls=True, lang="korean")
-    ocr_results = ocr_model.ocr(tmp_path, cls=True)
+    ocr_model = PaddleOCR(
+    lang="korean",        # 한국어 모델
+    use_angle_cls=True    # (예전 cls=True 역할은 생성자에서 설정)
+)
+
+
+    ocr_results = ocr_model.ocr(tmp_path)  # ⛔ cls 인자 넣지 않음
     extracted_text = "\n".join([line[1][0] for page in ocr_results for line in page])
 
     st.subheader("🔍 인식된 텍스트")
