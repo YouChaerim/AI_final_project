@@ -1,3 +1,4 @@
+# server/kakao_sign.py
 from fastapi import APIRouter
 from fastapi.responses import RedirectResponse, JSONResponse
 from urllib.parse import quote_plus
@@ -10,7 +11,7 @@ load_dotenv()
 KAKAO_CLIENT_ID = os.getenv("KAKAO_CLIENT_ID")
 KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET")
 KAKAO_REDIRECT_URI = os.getenv("KAKAO_REDIRECT_URI")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
+FRONTEND_URL = os.getenv("FRONTEND_URL")
 
 router = APIRouter(prefix="/auth/kakao", tags=["kakao-auth"])
 

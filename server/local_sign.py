@@ -2,8 +2,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
-
-# 공통 유틸/DB (이미 만들어둔 common_sign에서 가져옴)
 from server.common_sign import db, hash_pw, verify_pw, now_kst, bump_streak_and_touch
 
 router = APIRouter(prefix="/auth/local", tags=["local-auth"])
@@ -30,7 +28,7 @@ def local_signup(body: LocalSignupIn):
     nick = (body.nickname or uid).strip()
     doc = {
         "provider": "local",
-        "provider_id": 'null',                 # ERD: int, 로컬은 0 고정
+        "provider_id": 0,               # 로컬은 0으로 고정
         "local_user_id": uid,
         "nickname": nick,
         "passwd": hash_pw(pw),
@@ -52,7 +50,6 @@ def local_login(body: LocalLoginIn):
     if not verify_pw(pw, user["passwd"]):
         return {"result": "error", "error": "wrong_password"}
 
-    # 연속출석/마지막 로그인 갱신
     bump_streak_and_touch(user)
     fresh = db.User.find_one({"_id": user["_id"]})
     return {

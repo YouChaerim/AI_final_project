@@ -82,6 +82,9 @@ pexels-shvets-production-8416079.jpg
 user_yawn_data_user01.json
 train26
 ragtest
+
 .DS_Store
 vectorstore
 quiz.py
+
+server
