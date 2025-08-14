@@ -254,6 +254,161 @@ def summarize_answer(answer):
                 {"role":"system","content":"아래 내용을 최대 2문장으로 요약."},
                 {"role":"user","content":answer}
             ]
+=======
+# ─── 본문 기능 ───
+st.title("📄 PDF 인식 및 요약")
+
+uploaded_file = st.file_uploader("PDF 파일을 업로드하세요", type=["pdf"])
+if uploaded_file:
+    tmp_path = "temp.pdf"
+    with open(tmp_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+
+    ocr_model = PaddleOCR(
+    lang="korean",        # 한국어 모델
+    use_angle_cls=True    # (예전 cls=True 역할은 생성자에서 설정)
+)
+
+
+    ocr_results = ocr_model.ocr(tmp_path)  # ⛔ cls 인자 넣지 않음
+    extracted_text = "\n".join([line[1][0] for page in ocr_results for line in page])
+
+    st.subheader("🔍 인식된 텍스트")
+    st.markdown(f"""
+    <textarea rows="10" style="
+        width: 100%;
+        background-color: {'#2C2C2E' if dark_mode else 'white'};
+        color: {'white' if dark_mode else 'black'};
+        border: 1px solid #555;
+        border-radius: 10px;
+        padding: 10px;
+    " readonly>{extracted_text}</textarea>
+    """, unsafe_allow_html=True)
+
+# ---------- 섹션 헤더 ----------
+st.markdown('<div class="section-head"><span>리포트 차트</span><span class="chev">▾</span></div>', unsafe_allow_html=True)
+
+# ===== 리포트 차트 =====
+c1_chart, c2_chart, c3_chart = st.columns(3, gap="small")
+GAUGE_H = 220
+DONUT_H = 220
+
+# 중앙 정렬(약간 왼쪽 보정) — 안전 클램프
+def center_left(fig, height, right_bias=0.16, mid=0.80):
+    left = 1.0 - (mid + right_bias)
+    left = max(0.01, left)  # 음수/0 방지
+    l, m, r = st.columns([left, mid, right_bias])
+    fig.update_layout(height=height)
+    with m:
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+# 팔레트(평균 차트 기준) + 테두리 색
+ORANGE_DARK  = "#FFB74D"
+ORANGE_MID   = "#FFCC80"
+ORANGE_LIGHT = "#FFE0B2"
+ORANGE_BAR   = "#FFA726"
+BORDER_BLACK = "#2B2B2E"
+
+# 도넛에 ‘연속된’ 바깥/안쪽(홀) 테두리 추가
+def add_donut_border(fig: go.Figure, hole: float = 0.58, color: str = BORDER_BLACK, width: float = 3.0):
+    # 바깥 원
+    fig.add_shape(type="circle",
+                  xref="paper", yref="paper",
+                  x0=0.03, y0=0.03, x1=0.97, y1=0.97,
+                  line=dict(color=color, width=width),
+                  fillcolor="rgba(0,0,0,0)")
+    # 안쪽(홀) 원
+    r = hole / 2.0
+    x0 = 0.5 - r; y0 = 0.5 - r; x1 = 0.5 + r; y1 = 0.5 + r
+    fig.add_shape(type="circle",
+                  xref="paper", yref="paper",
+                  x0=x0, y0=y0, x1=x1, y1=y1,
+                  line=dict(color=color, width=width),
+                  fillcolor="rgba(0,0,0,0)")
+
+# --- 1) 평균 차트(게이지) ---
+with c1_chart:
+    category = st.session_state.get("metric_select", "일 공부 시간 평균")
+
+    with st.container(border=True):
+        st.markdown("### 평균 차트")
+
+        if category == "일 공부 시간 평균":
+            avg_minutes = float(filtered_df["학습시간"].mean() or 0.0)
+            gauge_value = int(round(avg_minutes))     # 중앙 숫자: 분
+            max_range = 24 * 60                       # 0~1440분
+            unit = "분"
+            h = gauge_value // 60; m = gauge_value % 60
+            custom_label = f"{h}시간 {m}분"
+        elif category == "일 포인트 평균":
+            avg_points = float(filtered_df["포인트"].mean() or 0.0)
+            gauge_value = round(avg_points, 1)
+            max_range = max(100, int(max(1.0, gauge_value * 2)))
+            unit = "P"; custom_label = f"{gauge_value} P"
+        else:  # 집중도 평균(예시)
+            gauge_value = random.randint(60, 100)
+            max_range = 100; unit = "%"; custom_label = f"{gauge_value}%"
+
+        val = max(0, min(gauge_value, max_range - 1e-6))
+        gauge_fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=val,
+            number={'suffix': f" {unit}", 'font': {'size': 20}},
+            title={'text': custom_label, 'font': {'size': 14}, 'align': 'center'},
+            domain={'x': [0.00, 0.90], 'y': [0.00, 1.00]},
+            gauge={
+                'axis': {'range': [0, max_range], 'tickfont': {'size': 10}},
+                'bar': {'color': ORANGE_BAR},
+                'bgcolor': "white",
+                'bordercolor': BORDER_BLACK,      # 검은 외곽선
+                'borderwidth': 2,
+                'steps': [
+                    {'range': [0, max_range * 0.33],                 'color': ORANGE_LIGHT},
+                    {'range': [max_range * 0.33, max_range * 0.66],  'color': ORANGE_MID},
+                    {'range': [max_range * 0.66, max_range],         'color': ORANGE_DARK},
+                ],
+                'threshold': {'line': {'color': "red", 'width': 3}, 'thickness': 0.7, 'value': val}
+            }
+        ))
+        gauge_fig.update_layout(margin=dict(l=0, r=0, t=6, b=6),
+                                paper_bgcolor='rgba(0,0,0,0)')
+        center_left(gauge_fig, GAUGE_H, right_bias=0.18, mid=0.80)
+
+    options = ["일 공부 시간 평균", "일 포인트 평균", "집중도 평균"]
+    st.selectbox(" ", options, key="metric_select",
+                 index=options.index(category), label_visibility="collapsed")
+
+# --- 2) 출석 차트 (오렌지 팔레트 + 연속 테두리) ---
+with c2_chart:
+    with st.container(border=True):
+        st.markdown("### 출석 차트")
+        days = len(filtered_df)
+        present = int(filtered_df["출석"].sum())
+        absent = max(0, days - present)
+        present_rate = round((present / days) * 100, 1) if days else 0.0
+
+        HOLE = 0.58
+        att_fig = go.Figure(data=[
+            go.Pie(
+                labels=["출석", "결석"],
+                values=[present, absent] if days else [1, 1],
+                hole=HOLE,
+                textinfo="percent+label",
+                insidetextorientation="radial",
+                sort=False,
+                marker=dict(
+                    colors=[ORANGE_DARK, ORANGE_LIGHT],           # 평균 차트 팔레트
+                    line=dict(color=BORDER_BLACK, width=3)        # 슬라이스 경계선
+                )
+            )
+        ])
+        add_donut_border(att_fig, hole=HOLE, color=BORDER_BLACK, width=3.2)  # 연속 외곽선
+
+        att_fig.update_layout(
+            margin=dict(l=10, r=10, t=6, b=44),
+            showlegend=False, paper_bgcolor='rgba(0,0,0,0)',
+            annotations=[dict(text=f"{present_rate:.1f}% 출석", x=0.5, y=0.5,
+                              font=dict(size=18, color="#4B5563"), showarrow=False)]
         )
         return resp.choices[0].message.content.strip()
     except:
