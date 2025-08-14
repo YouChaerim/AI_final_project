@@ -84,4 +84,5 @@ train26
 ragtest
 .DS_Store
 vectorstore
+quiz1.py
 quiz.py
