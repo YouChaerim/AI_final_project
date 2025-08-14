@@ -1,3 +1,4 @@
+
 # app.py
 # -*- coding: utf-8 -*- (유니코드로 수정 2025/07/25)
 import io, os, re, gc, json, random
@@ -42,18 +43,20 @@ else:
     nav_bg    = "rgba(255,255,255,0.9)"
     nav_link  = "#000"
 
+
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;800;900&display=swap');
 html, body {{ background-color:{bg_color}; color:{font_color}; font-family:'Noto Sans KR', sans-serif; zoom:1.10; margin:0; }}
 .stApp {{ background-color:{bg_color}; }}
-/* 헤더 위치는 유지 */
+
 .block-container {{ padding-top:0 !important; }}
 a {{ text-decoration:none !important; color:{font_color}; }}
 header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !important; }}
 ::selection {{ background:#FF9330; color:white; }}
 
-.container {{ max-width:1200px; margin:auto; padding:0 40px 40px !important; }}  /* 상단 패딩 0으로 ↓ */
+
+.container {{ max-width:1200px; margin:auto; padding:8px 40px 40px !important; }}
 
 .top-nav {{ display:flex; justify-content:space-between; align-items:center; padding:12px 0; margin-top:40px !important; background-color:{nav_bg}; box-shadow:0 2px 4px rgba(0,0,0,0.05); }}
 .nav-left {{ display:flex; align-items:center; gap:60px; }}
@@ -67,38 +70,37 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
   overflow:hidden; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 2px rgba(0,0,0,0.06); }}
 .profile-icon img {{ width:100%; height:100%; object-fit:contain; }}
 
-/* 상단 섹션 배너(간격만 살짝) */
-.section{{ width:100%; background:{card_bg}; border:1px solid #F2D4B6; border-radius:14px; box-shadow:0 6px 18px rgba(17,24,39,0.06); overflow:hidden; margin:6px 0 16px; }}
-.section-header{{ background:linear-gradient(90deg,#FF7A00,#FFA74D); color:#fff; text-align:center; font-weight:900; font-size:40px; padding:14px 0; }}
-.section-body{{ padding:14px; }}
+
+/* 상단 섹션 배너(퀴즈 생성기/ PDF요약 공통) */
+.section{{ width:100%; background:{card_bg}; border:1px solid #F2D4B6; border-radius:14px; box-shadow:0 6px 18px rgba(17,24,39,0.06); overflow:hidden; margin:10px 0 22px 0; }}
+.section-header{{ background:linear-gradient(90deg,#FF7A00,#FFA74D); color:#fff; text-align:center; font-weight:900; font-size:40px; padding:18px 0; }}
+.section-body{{ padding:18px; }}
 
 /* PDF 카드 */
 .capture-card {{ width:100%; background:#fff; border:1px solid #F1E6D8; border-radius:18px;
-  box-shadow:0 18px 48px rgba(17,24,39,.06); padding:22px 22px 18px; margin-top:0; }}
-.cam-wrap {{ display:flex; align-items:flex-start; gap:24px; }} /* gap 줄임 */
+  box-shadow:0 18px 48px rgba(17,24,39,.06); padding:26px 26px 22px; margin-top:6px; }}
+.cam-wrap {{ display:flex; align-items:flex-start; gap:32px; }}
+
 .cam-square {{ width:340px; height:340px; border-radius:18px; background:linear-gradient(180deg,#F6F9FF 0%,#EEF2F7 100%);
   border:1px solid #E9EEF6; box-shadow:0 1px 0 #FFFFFF inset, 0 10px 26px rgba(17,24,39,.06); display:flex; align-items:center; justify-content:center; }}
 .cam-square .inner{{ display:flex; flex-direction:column; align-items:center; gap:16px; color:#8A94A6; }}
 .cam-square .label{{ font-weight:800; font-size:18px; color:#6B7280; }}
-.right-col .title {{ font-size:44px; font-weight:900; margin:2px 0 6px; }}
-.right-col .desc  {{ font-size:20px; color:#4B5563; margin-bottom:12px; }}
 
-/* 버튼/업로더 가로 배치 */
-.btn-row {{ display:flex; gap:12px; align-items:center; margin:2px 0 6px; }}
-.btn-row > .cell {{ flex:1; }}
-div[data-testid="stFileUploader"]{{ width:100%; }}
+.right-col .title {{ font-size:44px; font-weight:900; margin-top:6px; margin-bottom:8px; }}
+.right-col .desc  {{ font-size:20px; color:#4B5563; margin-bottom:16px; }}
+.btn-row {{ display:flex; gap:12px; align-items:center; margin:6px 0 8px; }}
+div[data-testid="stFileUploader"]{{ width:210px; }}
 div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"],
-div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"]{{ padding:0 !important; border:none !important; height:52px; border-radius:12px;
+div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"]{{ padding:0 !important; border:none !important; height:52px; width:210px; border-radius:12px;
   background:linear-gradient(90deg,#FF8A00,#FF7A00); box-shadow:0 8px 18px rgba(255,138,0,.18); cursor:pointer; }}
-div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"] * ,
+div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"] *,
 div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"] * {{ display:none !important; }}
 div[data-testid="stFileUploader"] section[data-testid="stFileUploaderDropzone"]::after,
-div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"]::after{{ content:"PDF 업로드"; display:flex; align-items:center; justify-content:center; height:52px; width:100%; color:#fff; font-weight:900; letter-spacing:.2px; }}
+div[data-testid="stFileUploader"] div[data-testid="stFileUploaderDropzone"]::after{{ content:"파일 업로드"; display:flex; align-items:center; justify-content:center; height:52px; width:210px; color:#fff; font-weight:900; letter-spacing:.2px; }}
 div[data-testid="stFileUploader"] label {{ display:none !important; }}
+.ghost-btn .stButton>button{{ height:52px; padding:0 22px; background:#fff; color:#334155; border:1.5px solid #E5E7EB; border-radius:12px; font-weight:900; }}
+.ghost-btn .stButton>button:hover{{ border-color:#FFB066; color:#FF7A00; }}
 
-.primary-btn .stButton>button{{ height:52px; width:100%; padding:0 22px; background:linear-gradient(90deg,#FF8A00,#FF7A00);
-  color:#fff; border:0; border-radius:12px; font-weight:900; box-shadow:0 8px 18px rgba(255,138,0,.18); }}
-.primary-btn .stButton>button:disabled{{ opacity:.45; cursor:not-allowed; }}
 .small-note{{ color:#9AA3AF; margin-top:8px; }}
 
 /* 퀴즈 플레이어 */
@@ -119,8 +121,6 @@ div[data-testid="stFileUploader"] label {{ display:none !important; }}
 .result-bad{{ color:#B91C1C; font-weight:900; }}
 </style>
 """, unsafe_allow_html=True)
-
-
 
 # =========================
 # OpenAI 클라이언트 캐싱
