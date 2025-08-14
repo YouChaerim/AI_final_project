@@ -15,3 +15,6 @@ Ultralytics
 fastapi
 uvicorn
 requests
+sentence-transformers
+conda-forge poppler
+plotly

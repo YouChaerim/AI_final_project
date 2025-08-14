@@ -175,59 +175,35 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ================= 본문 =================
-st.markdown('<div class="container">', unsafe_allow_html=True)
-st.markdown('<div class="panel">', unsafe_allow_html=True)
-st.markdown('<div class="panel-head">리포트</div>', unsafe_allow_html=True)
-st.markdown('<div class="panel-body">', unsafe_allow_html=True)
+# ─── 본문 기능 ───
+st.title("📄 PDF 인식 및 요약")
 
-# ---------------- 데이터 (예시) ----------------
-date_range = pd.date_range(start="2025-01-01", end="2025-12-31", freq="D")
-df = pd.DataFrame({
-    "날짜": date_range,
-    "학습시간": (pd.Series(range(len(date_range))) % 5 + 1) * 10,   # 분
-    "포인트": (pd.Series(range(len(date_range))) % 4 + 1) * 15,
-    "출석": [1 if i % 2 == 0 else 0 for i in range(len(date_range))],
-})
-df["날짜_date"] = df["날짜"].dt.date
+uploaded_file = st.file_uploader("PDF 파일을 업로드하세요", type=["pdf"])
+if uploaded_file:
+    tmp_path = "temp.pdf"
+    with open(tmp_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
 
-today_date = datetime.today().date()
-data_start = df["날짜_date"].min()
-data_end = df["날짜_date"].max()
-default_end = min(today_date, data_end)
-default_start = max(data_start, default_end - timedelta(days=30))
+    ocr_model = PaddleOCR(
+    lang="korean",        # 한국어 모델
+    use_angle_cls=True    # (예전 cls=True 역할은 생성자에서 설정)
+)
 
-with st.expander("📅 기간 선택", expanded=False):
-    c1, c2 = st.columns(2)
-    with c1:
-        start_date = st.date_input("시작일", value=default_start, min_value=data_start, max_value=data_end, key="start_date")
-    with c2:
-        end_date = st.date_input("종료일", value=default_end, min_value=data_start, max_value=data_end, key="end_date")
-    if start_date > end_date:
-        st.error("⚠️ 시작일은 종료일보다 빠르거나 같아야 합니다.")
-        st.stop()
 
-mask = (df["날짜_date"] >= start_date) & (df["날짜_date"] <= end_date)
-filtered_df = df.loc[mask].reset_index(drop=True)
+    ocr_results = ocr_model.ocr(tmp_path)  # ⛔ cls 인자 넣지 않음
+    extracted_text = "\n".join([line[1][0] for page in ocr_results for line in page])
 
-# ---------- 요약 카드 ----------
-total_days = len(filtered_df)
-total_study_time = int(filtered_df["학습시간"].sum())        # 분
-total_point = int(filtered_df["포인트"].sum())
-total_attendance = int(filtered_df["출석"].sum())
-rate = round((total_attendance/total_days)*100, 1) if total_days else 0
-today_minutes = int(df.loc[df["날짜_date"] == today_date, "학습시간"].sum())
-
-st.markdown(f"""
-<div class="metrics">
-  <div class="metric"><div class="label">총 학습일</div><div class="value">{total_days}일</div></div>
-  <div class="metric"><div class="label">총 학습 시간</div><div class="value">{total_study_time}분</div></div>
-  <div class="metric"><div class="label">오늘 학습 시간</div><div class="value">{today_minutes}분</div></div>
-  <div class="metric"><div class="label">총 포인트</div><div class="value">{total_point}P</div></div>
-  <div class="metric"><div class="label">총 출석일</div><div class="value">{total_attendance}일</div></div>
-  <div class="metric"><div class="label">출석률</div><div class="value">{rate}%</div></div>
-</div>
-""", unsafe_allow_html=True)
+    st.subheader("🔍 인식된 텍스트")
+    st.markdown(f"""
+    <textarea rows="10" style="
+        width: 100%;
+        background-color: {'#2C2C2E' if dark_mode else 'white'};
+        color: {'white' if dark_mode else 'black'};
+        border: 1px solid #555;
+        border-radius: 10px;
+        padding: 10px;
+    " readonly>{extracted_text}</textarea>
+    """, unsafe_allow_html=True)
 
 # ---------- 섹션 헤더 ----------
 st.markdown('<div class="section-head"><span>리포트 차트</span><span class="chev">▾</span></div>', unsafe_allow_html=True)
