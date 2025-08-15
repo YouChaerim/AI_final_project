@@ -13,7 +13,7 @@ except Exception:
     PaddleOCR = None
 
 st.set_page_config(page_title="PDF 요약 & 퀴즈", layout="wide", initial_sidebar_state="collapsed")
-load_dotenv(dotenv_path="C:/Users/user/Desktop/최종파일/AI_final_project/.env")
+load_dotenv(dotenv_path="C:/Users/user/Desktop/main_project/.env")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 USER_JSON_PATH = "user_data.json"

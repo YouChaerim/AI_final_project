@@ -3,7 +3,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import random
 import os, json, base64
 
@@ -92,6 +92,7 @@ html, body, .stApp {{
   color:{fg};
   font-family:'Noto Sans KR', sans-serif;
   zoom:1.10; margin:0;
+  overflow-x:hidden;
 }}
 .block-container {{ padding-top:0 !important; }}
 header, [data-testid="stToolbar"], #MainMenu, [data-testid="stSidebar"] {{ display:none !important; }}
@@ -129,10 +130,6 @@ a {{ text-decoration:none !important; }}
 }}
 .panel-body {{ padding:8px 36px 20px; }}
 
-/* 기간선택 여백 */
-.panel-body [data-testid="stExpander"] {{ margin-top:0 !important; }}
-.panel-body [data-testid="stExpander"] details summary {{ padding-top:6px !important; padding-bottom:6px !important; }}
-
 /* 요약카드 */
 .metrics {{
   display:grid; grid-template-columns:repeat(3,1fr);
@@ -140,17 +137,17 @@ a {{ text-decoration:none !important; }}
 }}
 .metric {{
   background:{panel_bg}; border-radius:12px; padding:14px;
-  box-shadow:0 4px 12px {card_border}; border:1px solid {card_border};
+  box-shadow:0 4px 12px rgba(0,0,0,.06); border:1px solid rgba(0,0,0,.06);
 }}
-.metric .label {{ font-size:13px; font-weight:900; color:{text_muted}; letter-spacing:.02em; margin-bottom:2px; }}
-.metric .value {{ font-size:28px; font-weight:900; line-height:1.1; margin-top:2px; }}
+.metric .label {{ font-size:13px; font-weight:900; color:#6B7280; letter-spacing:.02em; margin-bottom:2px; }}
+.metric .value {{ font-size:28px; font-weight:900; line-height:1.1; }}
 
 /* 섹션 헤더 */
 .section-head {{
   display:flex; align-items:center; gap:8px;
-  background:{panel_bg}; border:1px solid {card_border};
+  background:{panel_bg}; border:1px solid rgba(0,0,0,.06);
   border-radius:14px; padding:12px 14px; margin:10px 0 8px;
-  box-shadow:0 4px 12px {card_border}; font-weight:900;
+  box-shadow:0 4px 12px rgba(0,0,0,.06); font-weight:900;
 }}
 .section-head .chev {{ margin-left:auto; opacity:.5; }}
 
@@ -160,15 +157,25 @@ a {{ text-decoration:none !important; }}
   border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.06);
   padding:10px 12px;
 }}
-/* 라벨 잘림 방지: visible */
-[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stPlotlyChart"] div{{ overflow: visible !important; }}
 
-/* 드롭다운을 '가능하면 위로' 띄우기 */
-div[data-testid="stSelectbox"] div[data-baseweb="select"] div[role="listbox"] {{
-  top: auto !important;
-  bottom: 100% !important;
-  margin-bottom: 8px !important;
+/* 🔒 하루집중도: 차트가 박스 밖으로 절대 못 나가게 강제 클리핑 */
+.focus-guard {{
+  border-radius:12px;
+  overflow:hidden;          /* 핵심: 밖으로 나가는 모든 요소를 자름 */
+  padding:0;                /* 내부 여백 0, 대신 Plotly 마진으로 조절 */
 }}
+.focus-guard [data-testid="stPlotlyChart"],
+.focus-guard [data-testid="stPlotlyChart"]>div,
+.focus-guard .plotly, .focus-guard .js-plotly-plot, .focus-guard .main-svg {{
+  width:100% !important; max-width:100% !important; overflow:hidden !important;
+}}
+
+/* 헤딩 앵커 숨김 */
+[data-testid="stHeading"] a,
+[data-testid="stHeading"] svg,
+[data-testid="stMarkdownContainer"] h1 a,
+[data-testid="stMarkdownContainer"] h2 a,
+[data-testid="stMarkdownContainer"] h3 a {{ display:none !important; visibility:hidden !important; pointer-events:none !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -234,8 +241,6 @@ total_study_time = int(filtered_df["학습시간"].sum())        # 분
 total_point = int(filtered_df["포인트"].sum())
 total_attendance = int(filtered_df["출석"].sum())
 rate = round((total_attendance/total_days)*100, 1) if total_days else 0
-
-# 오늘 학습 시간(분)
 today_minutes = int(df.loc[df["날짜_date"] == today_date, "학습시간"].sum())
 
 st.markdown(f"""
@@ -257,21 +262,15 @@ c1_chart, c2_chart, c3_chart = st.columns(3, gap="small")
 GAUGE_H = 220
 DONUT_H = 220
 
-# 중앙 정렬(약간 왼쪽 보정) 도우미 — 안전 클램프 적용
 def center_left(fig, height, right_bias=0.16, mid=0.80):
-    """
-    카드 안에서 차트를 시각적 중앙으로 보이게 하는 헬퍼.
-    right_bias: 오른쪽 여백 비율(높을수록 차트가 왼쪽으로 이동)
-    mid: 차트를 넣는 중앙 영역 비율
-    """
     left = 1.0 - (mid + right_bias)
-    left = max(0.01, left)  # <-- 음수/제로 방지
+    left = max(0.01, left)
     l, m, r = st.columns([left, mid, right_bias])
     fig.update_layout(height=height)
     with m:
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-# --- 1) 평균 차트(게이지, 주황계열 유지) ---
+# --- 1) 평균 차트 ---
 with c1_chart:
     category = st.session_state.get("metric_select", "일 공부 시간 평균")
 
@@ -280,19 +279,17 @@ with c1_chart:
 
         if category == "일 공부 시간 평균":
             avg_minutes = float(filtered_df["학습시간"].mean() or 0.0)
-            gauge_value = int(round(avg_minutes))  # 중앙 숫자: 분
-            max_range = 24 * 60                   # 축: 0~1440분
+            gauge_value = int(round(avg_minutes))
+            max_range = 24 * 60
             unit = "분"
             h = gauge_value // 60; m = gauge_value % 60
             custom_label = f"{h}시간 {m}분"
-
         elif category == "일 포인트 평균":
             avg_points = float(filtered_df["포인트"].mean() or 0.0)
             gauge_value = round(avg_points, 1)
             max_range = max(100, int(max(1.0, gauge_value * 2)))
             unit = "P"; custom_label = f"{gauge_value} P"
-
-        else:  # 집중도 평균(예시)
+        else:
             gauge_value = random.randint(60, 100)
             max_range = 100; unit = "%"; custom_label = f"{gauge_value}%"
 
@@ -305,8 +302,10 @@ with c1_chart:
             domain={'x': [0.00, 0.90], 'y': [0.00, 1.00]},
             gauge={
                 'axis': {'range': [0, max_range], 'tickfont': {'size': 10}},
-                'bar': {'color': "coral"},  # 주황 바
+                'bar': {'color': "coral"},
                 'bgcolor': "white",
+                'bordercolor': "black",
+                'borderwidth': 2,
                 'steps': [
                     {'range': [0, max_range * 0.33], 'color': '#FFE0B2'},
                     {'range': [max_range * 0.33, max_range * 0.66], 'color': '#FFCC80'},
@@ -323,7 +322,7 @@ with c1_chart:
     st.selectbox(" ", options, key="metric_select",
                  index=options.index(category), label_visibility="collapsed")
 
-# --- 2) 출석 차트 (기간 내 출석률/결석률) ---
+# --- 2) 출석 차트 ---
 with c2_chart:
     with st.container(border=True):
         st.markdown("### 출석 차트")
@@ -340,45 +339,170 @@ with c2_chart:
             insidetextorientation='radial',
             sort=False
         )])
-        att_fig.update_traces(marker=dict(colors=['#A0E7CF', '#FFCDD2']))  # 녹색/핑크
+        att_fig.update_traces(marker=dict(
+            colors=['#FFCC80', '#FFE0B2'],
+            line=dict(color='black', width=1.5)
+        ))
         att_fig.update_layout(
-            margin=dict(l=10, r=10, t=6, b=40),  # 하단 여백 확보
+            margin=dict(l=10, r=10, t=6, b=40),
             showlegend=False, paper_bgcolor='rgba(0,0,0,0)',
             annotations=[dict(text=f"{present_rate:.1f}% 출석", x=0.5, y=0.5,
                               font=dict(size=18), showarrow=False)]
         )
-        # 중앙 보정(왼쪽으로 더)
         center_left(att_fig, DONUT_H, right_bias=0.26, mid=0.78)
 
-# --- 3) 포인트 획득 차트 (출석/집중도/퀴즈) ---
+# --- 3) 포인트 획득 차트 ---
 with c3_chart:
     with st.container(border=True):
         st.markdown("### 포인트 획득 차트")
 
         total_pts = int(filtered_df["포인트"].sum())
-        # 실제 경로별 포인트 컬럼이 있다면 그 합계를 사용하세요.
         weights = {"퀴즈": 0.40, "출석": 0.35, "집중도": 0.25}
         points_data = {k: round(total_pts * w) for k, w in weights.items()} if total_pts > 0 else {k: 0 for k in weights}
-        vals = list(points_data.values()); 
-        if sum(vals) == 0: vals = [1, 1, 1]  # 파이 안전값
+        vals = list(points_data.values())
+        if sum(vals) == 0:
+            vals = [1, 1, 1]
 
         pts_fig = go.Figure(data=[go.Pie(
             labels=list(points_data.keys()),
             values=vals,
             hole=.58,
             textinfo='percent+label',
+            textposition='outside',  # ✅ 라벨을 바깥에 표시
             insidetextorientation='radial',
             sort=False
         )])
-        pts_fig.update_traces(marker=dict(colors=['#6BCBFF', '#A0E7CF', '#7FB3FF']))  # 파랑/녹색 톤
+        pts_fig.update_traces(marker=dict(
+            colors=['#FFE0B2', '#FFCC80', '#FFB74D'],
+            line=dict(color='black', width=1.5)
+        ))
         pts_fig.update_layout(
-            margin=dict(l=10, r=10, t=6, b=48),  # 하단 여백 더 확보
+            margin=dict(l=10, r=10, t=6, b=48),
             showlegend=False, paper_bgcolor='rgba(0,0,0,0)',
             annotations=[dict(text=f"{total_pts}P", x=0.5, y=0.5,
                               font=dict(size=18), showarrow=False)]
         )
-        # 중앙 보정(왼쪽으로 더)
         center_left(pts_fig, DONUT_H, right_bias=0.26, mid=0.78)
+
+
+# ======================= 하루 집중도 (클리핑 + 중앙 정렬 + 00~24 표기) =======================
+st.markdown('<div class="section-head"><span>하루 집중도</span><span class="chev">▾</span></div>', unsafe_allow_html=True)
+
+with st.container(border=True):
+    # 차트를 박스 내부에 강제 클리핑
+    st.markdown('<div class="focus-guard">', unsafe_allow_html=True)
+
+    focus_day = st.session_state.get("focus_day", default_end)
+
+    # 데모 세션
+    if "focus_events" in st.session_state:
+        base_events = st.session_state["focus_events"]
+    else:
+        rnd = random.Random(13)
+        base_events = [
+            {"time":"09:00","blinks":2,"yawns":1},
+            {"time":"09:30","blinks":3,"yawns":0},
+            {"time":"10:00","blinks":4,"yawns":2},
+        ]
+        for ev in base_events:
+            ev["blinks"] = max(0, ev["blinks"] + rnd.randint(-1,1))
+            ev["yawns"]  = max(0, ev["yawns"]  + rnd.randint(-1,1))
+
+    SESS_LEN = 25
+    sessions = []
+    for ev in base_events:
+        try:
+            s = datetime.combine(focus_day, datetime.strptime(ev["time"], "%H:%M").time())
+        except Exception:
+            continue
+        e = s + timedelta(minutes=SESS_LEN)
+        sessions.append({"start": s, "end": e, "length": SESS_LEN,
+                         "blinks": int(ev.get("blinks",0)), "yawns": int(ev.get("yawns",0))})
+    sessions.sort(key=lambda x: x["start"])
+
+    # 2시간 단위 집계
+    day0 = datetime.combine(focus_day, time(0,0))
+    bin_starts = [day0 + timedelta(hours=h) for h in range(0, 24, 2)]
+    bar_x = bin_starts
+
+    BAR_WIDTH_RATIO = 0.40
+    width_ms = int(2*60*60*1000*BAR_WIDTH_RATIO)
+
+    scores, hover = [], []
+    for h in range(0, 24, 2):
+        h0 = day0 + timedelta(hours=h)
+        h1 = h0 + timedelta(hours=2)
+        studied_min = 0.0; blink_part = 0.0; yawn_part = 0.0
+        for ses in sessions:
+            s, e, L = ses["start"], ses["end"], float(ses["length"])
+            inter = max(0.0, (min(e, h1) - max(s, h0)).total_seconds()/60.0)
+            if inter <= 0: continue
+            studied_min += inter
+            blink_part += ses["blinks"] * (inter / L)
+            yawn_part  += ses["yawns"]  * (inter / L)
+        b = int(round(blink_part)); y = int(round(yawn_part))
+        score = 0 if studied_min <= 0 else max(0, min(100, 100 - 5*b - 2*y))
+        scores.append(score)
+        hover.append([h0.strftime('%H:%M'), h1.strftime('%H:%M'),
+                      int(round(studied_min)), b, y, b*5, y*2])
+
+    # 00:00~24:00 강제 표기 + 경계선 라벨 여유
+    tickvals = [day0 + timedelta(hours=h) for h in range(25)]
+    ticktext = [f"{h:02d}:00" for h in range(25)]
+
+    if dark:
+        bar_color = "#FFA149"; grid_col = "rgba(255,147,48,0.18)"; hover_bd = "#FFCC80"; grid_col_y = "rgba(255,255,255,0.10)"
+    else:
+        bar_color = "#FF9330"; grid_col = "rgba(0,0,0,0.08)"; hover_bd = "#FF9330"; grid_col_y = "rgba(0,0,0,0.06)"
+
+    text_fg = [f"{int(v)}%" if v > 0 else "" for v in scores]
+
+    fig = go.Figure(go.Bar(
+        x=bar_x, y=scores, width=width_ms,
+        marker=dict(color=bar_color),
+        text=text_fg, textposition="inside", insidetextanchor="middle",
+        customdata=hover, cliponaxis=True,
+        hovertemplate=("시간대 %{customdata[0]}–%{customdata[1]}<br>"
+                       "평균 집중도 %{y:.0f}%<br>"
+                       "학습 %{customdata[2]}분<br>"
+                       "졸음(깜빡임) %{customdata[3]}회 (−%{customdata[5]}점)<br>"
+                       "하품 %{customdata[4]}회 (−%{customdata[6]}점)"
+                       "<extra></extra>")
+    ))
+
+    # ⚙️ 레이아웃: 오른쪽/왼쪽 경계선 100% 내부에 머물도록 마진 + 범위 여유
+    fig.update_layout(
+        height=280,
+        margin=dict(l=10, r=14, t=6, b=44),  # r 살짝 확보 → 라벨/그리드가 경계선과 접촉 방지
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        bargap=0.42,
+        dragmode=False,
+        hoverlabel=dict(bgcolor="#FFFFFF", bordercolor=hover_bd,
+                        font_size=12, align="left", namelength=-1)
+    )
+    fig.update_xaxes(
+        type="date",
+        range=[day0 - timedelta(minutes=8), day0 + timedelta(hours=24, minutes=8)],
+        tickmode="array", tickvals=tickvals, ticktext=ticktext,
+        ticks="outside", ticklen=3, tickfont=dict(size=11),
+        showgrid=True, gridcolor=grid_col, gridwidth=1,
+        fixedrange=True, automargin=True, constrain="domain"
+    )
+    fig.update_yaxes(
+        title=None,
+        range=[0, 100], fixedrange=True,
+        tickmode="array", tickvals=[0, 25, 50, 75, 100],
+        tickfont=dict(size=11),
+        showgrid=True, gridcolor=grid_col_y, gridwidth=1,
+        zeroline=False
+    )
+
+    st.plotly_chart(fig, use_container_width=True,
+                    config={"displayModeBar": False, "scrollZoom": False})
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # 종료
 st.markdown("</div>", unsafe_allow_html=True)  # /panel-body
