@@ -1,5 +1,9 @@
 {
+<<<<<<< HEAD
   "todo": "공부하기\n숙제하기",
+=======
+  "todo": "수학 예제 풀기\n영단어 암기",
+>>>>>>> d9b2f2a2e92ada495af5df7c14c78f8945cf685f
   "memo": "중간고사 다음 주!",
   "study_hour": 1,
   "study_minute": 30,

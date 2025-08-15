@@ -1,4 +1,8 @@
 import streamlit as st
+import os
+import requests
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8080")
 
 # ✅ 페이지 설정
 st.set_page_config(page_title="딸깍공 로그인", layout="centered")
@@ -15,7 +19,6 @@ st.markdown("""
     body, .block-container, .main, .stApp {
         padding-top: 0 !important;
         margin-top: 0 !important;
-        background-color: #fff;
     }
 
     /* ✅ 메인 컨테이너 위치 살짝 더 아래로 */
@@ -35,10 +38,15 @@ st.markdown("""
         border: 2px solid #FFA500; background-color: #F4F6FA;
     }
 
-    .login-btn {
-        font-weight: bold; width: 100%; padding: 0.8rem; border-radius: 0.6rem;
-        margin-top: 1rem; font-size: 1rem;
-        background-color: #FFF5E5; color: #FFA500; border: 2px solid #FFA500;
+    .login-btn-wrap button {
+        width: 100%;
+        padding: 0.8rem;
+        border-radius: 0.6rem;
+        font-weight: 700;
+        font-size: 1rem;
+        background-color: #FFF5E5;
+        color: #FFA500;
+        border: 2px solid #FFA500;
     }
 
     .checkbox-box { margin-top: 0.4rem; margin-bottom: 1.2rem; }
@@ -92,12 +100,43 @@ with st.container():
     </div>
     """, unsafe_allow_html=True)
 
-    # ✅ 입력 필드
-    user_id = st.text_input("아이디", label_visibility="collapsed")
-    user_pw = st.text_input("비밀번호", type="password", label_visibility="collapsed")
+    # ✅ 로컬 로그인 폼 (컨테이너 안)
+    st.markdown('<div class="login-btn-wrap">', unsafe_allow_html=True)
+    with st.form("local_login_form", clear_on_submit=False):
+        user_id = st.text_input("아이디", label_visibility="collapsed", key="local_login_id")
+        user_pw = st.text_input("비밀번호", type="password", label_visibility="collapsed", key="local_login_pw")
+        login_clicked = st.form_submit_button("로그인")  # CSS로 스타일 입히기
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # ✅ 로그인 버튼
-    st.markdown('<button class="login-btn">로그인</button>', unsafe_allow_html=True)
+    # ✅ 로그인 처리
+    if login_clicked:
+        try:
+            res = requests.post(
+                f"{BACKEND_URL}/auth/local/login",
+                json={"user_id": user_id, "password": user_pw},
+                timeout=10,
+            )
+            data = res.json()
+            if res.ok and data.get("result") == "ok":
+                u = data["user"]
+                st.session_state["user"] = {
+                    "provider": "local",
+                    "provider_id": 0,
+                    "local_user_id": u["local_user_id"],
+                    "nickname": u["nickname"],
+                }
+                st.success("로그인 완료!")
+                st.switch_page("mainpage.py")
+                st.stop()
+            else:
+                err = data.get("error")
+                st.error({
+                    "not_found": "존재하지 않는 아이디입니다.",
+                    "wrong_password": "비밀번호가 올바르지 않습니다.",
+                }.get(err, f"로그인 실패: {err}"))
+        except Exception as e:
+            st.error(f"로그인 오류: {e}")
+
 
     # ✅ 로그인 상태 유지 체크박스
     st.markdown('<div class="checkbox-box">', unsafe_allow_html=True)
@@ -108,14 +147,14 @@ with st.container():
     st.markdown('<div class="social-login">간편 로그인</div>', unsafe_allow_html=True)
 
     # ✅ 간편 로그인 아이콘
-    st.markdown("""
+    st.markdown(f"""
     <div class="simple-login-row">
         <div class="simple-login-icon">
             <img src="https://img.icons8.com/ios-filled/50/000000/mac-os.png" alt="apple">
         </div>
-        <div class="simple-login-icon">
+        <a class="simple-login-icon" href="{BACKEND_URL}/auth/kakao/login">
             <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/KakaoTalk_logo.svg/512px-KakaoTalk_logo.svg.png" alt="kakao">
-        </div>
+        </a>
         <div class="simple-login-icon">
             <img src="https://img.icons8.com/fluency/48/000000/instagram-new.png" alt="insta">
         </div>
@@ -133,3 +172,24 @@ with st.container():
     """, unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+qp = st.query_params
+
+def pick(v):
+    return v[0] if isinstance(v, list) else (v or "")
+
+# ✅ 리스트에서 꺼내서 비교
+if pick(qp.get("login")) == "success":
+    st.session_state["user"] = {
+        "provider": pick(qp.get("provider")) or "kakao",
+        "provider_id": int(pick(qp.get("uid")) or 0),
+        "nickname": pick(qp.get("nickname")),
+    }
+    # 새로고침 루프 방지: 파라미터 제거 후 메인으로 이동
+    try:
+        st.query_params.clear()
+    except:
+        pass
+    st.switch_page("mainpage.py")
+    st.stop()
+

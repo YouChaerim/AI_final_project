@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import time
-
 from EyeControl import detect_blink
 from YawnControl import detect_yawn
 
