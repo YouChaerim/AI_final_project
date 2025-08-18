@@ -62,17 +62,21 @@ dark = st.session_state.user_data.get("dark_mode", False)
 if dark:
     bg_color = "#1C1C1E"; font_color = "#F2F2F2"
     card_bg = "#2C2C2E"; nav_bg = "#2C2C2E"; nav_link = "#F2F2F2"
+    sub_text = "#CFCFCF"
 else:
     bg_color = "#FAFAFA"; font_color = "#333"
     card_bg = "white";    nav_bg = "rgba(255, 255, 255, 0.9)"; nav_link = "#000"
+    sub_text = "#6B7280"
 
 st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap');
 html, body {{ background-color:{bg_color}; color:{font_color}; font-family:'Noto Sans KR', sans-serif; zoom:1.10; margin:0; }}
 .stApp {{ background-color:{bg_color}; }}
 .block-container {{ padding-top:0 !important; }}
 .container {{ max-width:1200px; margin:auto; padding:40px; }}
+/* 랭킹 화면에서만 위 패딩을 줄여 헤더와 타이틀 간격을 좁힘 */
+.container.tight-top {{ padding-top:16px; }}
 a {{ text-decoration:none !important; color:{font_color}; }}
 header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !important; }}
 ::selection {{ background:#FF9330; color:white; }}
@@ -89,44 +93,61 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
 .nav-menu div a {{ color:{nav_link} !important; transition:.2s; }}
 .nav-menu div:hover a {{ color:#FF9330 !important; }}
 
-/* 헤더 오른쪽 원형 아이콘 (동그라미 자체도 왼쪽으로 이동) */
-.profile-group {{
-  display:flex; gap:16px; align-items:center;
-  margin-right: 12px;   /* ← 헤더 오른쪽 끝에서 약간 왼쪽으로 */
-}}
+/* 헤더 오른쪽 원형 아이콘 */
+.profile-group {{ display:flex; gap:16px; align-items:center; margin-right:12px; }}
 .profile-icon {{
   width:36px; height:36px; border-radius:50%;
   background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
   overflow:hidden; display:flex; align-items:center; justify-content:center;
   box-shadow:0 1px 2px rgba(0,0,0,0.06);
 }}
-.profile-icon img {{
-  width:100%; height:100%; object-fit:contain; image-rendering:auto;
-}}
+.profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
 
+/* 공통 카드 */
 .card {{ background:{card_bg}; border:1px solid rgba(0,0,0,.06); border-radius:16px; padding:14px; box-shadow:0 8px 22px rgba(0,0,0,.06); margin-top:16px; }}
 
-/* 랭킹 리스트 */
-.row {{ display:flex; align-items:center; justify-content:space-between; padding:10px 10px; border-radius:12px; }}
-.row + .row {{ border-top:1px dashed rgba(0,0,0,0.06); }}
-.left {{ display:flex; align-items:center; gap:12px; }}
-.ranknum {{ width:34px; height:34px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:rgba(0,0,0,0.05); font-weight:800; }}
-.point {{ font-weight:800; }}
+/* 섹션 타이틀(오렌지 그라데이션 바) — 헤더와 더 가깝게 */
+.section-title {{
+  margin-top:6px; margin-bottom:14px; border-radius:14px;
+  background: linear-gradient(90deg, #FF9330 0%, #FF7A30 100%);
+  color:white; text-align:center; padding:26px 10px; font-size:28px; font-weight:800;
+}}
 
-/* 랭킹용 아바타(44x44) */
+/* 컨트롤 바 */
+.toolbar {{ display:flex; gap:16px; align-items:center; }}
+.pill {{ padding:10px 16px; border-radius:12px; background:{card_bg}; border:1px solid rgba(0,0,0,.06); font-weight:700; }}
+.input {{ flex:1; }}
+
+/* 랭킹 리스트 */
+.list-card {{ padding:0; }}
+.row {{ display:flex; align-items:center; justify-content:space-between; padding:16px 18px; }}
+.row + .row {{ border-top:1px dashed rgba(0,0,0,0.06); }}
+.left {{ display:flex; align-items:center; gap:14px; }}
+.badge {{
+  width:34px; height:34px; display:flex; align-items:center; justify-content:center;
+  border-radius:10px; background:rgba(0,0,0,0.05); font-weight:800; color:#333;
+}}
+.badge.gold   {{ background:#FCD34D; }}
+.badge.silver {{ background:#E5E7EB; }}
+.badge.bronze {{ background:#F59E0B; color:white; }}
 .rank-avatar {{
   width:44px; height:44px; border-radius:12px;
   display:flex; align-items:center; justify-content:center;
   background:linear-gradient(135deg,#DDEFFF,#F8FBFF); overflow:hidden;
 }}
 .rank-avatar img {{ width:80%; height:80%; object-fit:contain; image-rendering:auto; }}
+.small {{ color:{sub_text}; font-size:14px; }}
 
-/* 캐릭터 박스 */
-.char-card {{ max-width:420px; margin:10px auto 0; }}
-.char-box {{ position:relative; width:100%; aspect-ratio: 4/5; border-radius:14px; border:1px dashed rgba(0,0,0,.06);
-             background: radial-gradient(ellipse at center, rgba(255,147,48,0.10), transparent 60%), {card_bg}; overflow:hidden; }}
-.scene {{ position:relative; width:100%; height:100%; }}
-.sprite {{ position:absolute; left:50%; top:62%; transform:translate(-50%,-62%); width:min(56%, 220px); image-rendering:auto; }}
+/* 사이드 카드 */
+.side-card .big {{ font-size:28px; font-weight:800; }}
+.side-card .muted {{ color:{sub_text}; }}
+.full-btn {{
+  width:100%; padding:12px 14px; border-radius:12px; border:none;
+  background:#FF9330; color:white; font-weight:800; cursor:pointer;
+}}
+.full-btn:active {{ transform:translateY(1px); }}
+.right-note {{ text-align:center; padding:18px 10px; }}
+.right-note .emoji {{ font-size:42px; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -137,31 +158,17 @@ def to_data_uri(abs_path: str) -> str:
     return f"data:image/png;base64,{b64}"
 
 def get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
-    """
-    장착 모자가 있으면 전용 이미지 우선 사용, 없으면 기본 이미지.
-    탐색 위치:
-      - assets/items/hats/{char}{sep}{hat_id}.png
-      - assets/characters/{char}{sep}{hat_id}.png
-    sep ∈ {"", "_", "-"}
-    'shiba'는 'siba' 철자도 자동 지원.
-    """
     keys = [char_key] + (["siba"] if char_key == "shiba" else [])
     candidates = []
-
     if hat_id:
         for k in keys:
             for sep in ["", "_", "-"]:
                 candidates.append(os.path.join(ASSETS_ROOT, "items", "hats", f"{k}{sep}{hat_id}.png"))
                 candidates.append(os.path.join(ASSETS_ROOT, "characters", f"{k}{sep}{hat_id}.png"))
-
     for k in keys:
         candidates.append(os.path.join(ASSETS_ROOT, "characters", f"{k}.png"))
-
     for p in candidates:
-        if os.path.exists(p):
-            return to_data_uri(p)
-
-    # fallback
+        if os.path.exists(p): return to_data_uri(p)
     return "data:image/svg+xml;utf8," \
            "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>"
 
@@ -225,42 +232,98 @@ def _rank_avatar_uri() -> str:
 # -------------------- views --------------------
 def view_ranking():
     u = st.session_state.user_data
-    st.subheader("📊 랭킹")
-    st.caption(f"보유 코인: 🪙 {u.get('coins',0)}")
-    col1, col2, col3 = st.columns([1,1,1])
-    with col1:
+
+    # Title bar (orange gradient)
+    st.markdown('<div class="section-title">랭킹</div>', unsafe_allow_html=True)
+
+    # Toolbar (기간 필터 + 검색)
+    c1, c2 = st.columns([1,3])
+    with c1:
         try:
             period = st.segmented_control("기간", options=["주간","월간","전체"], default="주간")
         except Exception:
             period = st.radio("기간", ["주간","월간","전체"], horizontal=True, index=0)
-    with col2:
-        q = st.text_input("닉네임 검색", "", placeholder="닉네임을 입력하세요")
-    with col3:
-        st.write("")
-        st.button("🧢 상점으로 이동", on_click=lambda: set_mode("shop"))
+    with c2:
+        q = st.text_input("닉네임 검색", "", placeholder="닉네임 검색", label_visibility="collapsed")
 
+    # Two-column layout: list (left) / side (right)
+    left, right = st.columns([3,1])
+
+    # ---------- Left: Ranking list ----------
     ranked = sort_by_period(period, RANK_DATA)
     if q.strip():
         ranked = [r for r in ranked if q.strip() in r["name"]]
 
     avatar_uri = _rank_avatar_uri()
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    for i, r in enumerate(ranked, 1):
-        st.markdown(f"""
-        <div class="row">
-          <div class="left">
-            <div class="ranknum">{i}</div>
-            <div class="rank-avatar"><img src="{avatar_uri}" alt="avatar"/></div>
-            <div>
-              <div style="font-weight:700">{r["name"]}</div>
-              <div class="small">습관 실행 {r["attempts"]}회 · ⭐ {r["points"]}</div>
+    with left:
+        st.markdown('<div class="card list-card">', unsafe_allow_html=True)
+        for i, r in enumerate(ranked, 1):
+            cls = "badge"
+            if i == 1: cls += " gold"
+            elif i == 2: cls += " silver"
+            elif i == 3: cls += " bronze"
+
+            st.markdown(f"""
+            <div class="row">
+              <div class="left">
+                <div class="{cls}">{i}</div>
+                <div class="rank-avatar"><img src="{avatar_uri}" alt="avatar"/></div>
+                <div>
+                  <div style="font-weight:700">{r["name"]}</div>
+                  <div class="small">습관 실행 {r["attempts"]}회</div>
+                </div>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center;">
+                <div class="small">습관 실행 {max(1, r["attempts"]//2)}회</div>
+                <div class="small">⭐ {r["points"]}</div>
+              </div>
             </div>
-          </div>
-          <div class="point">⭐ {r["points"]}</div>
+            """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------- Right: My info + Hat promo ----------
+    with right:
+        # 내 정보 카드
+        st.markdown('<div class="card side-card">', unsafe_allow_html=True)
+
+        # 내 랭크 계산
+        my_name = (u.get("nickname") or "").strip()
+        my_rank = None
+        for idx, row in enumerate(ranked, 1):
+            if row["name"] == my_name:
+                my_rank = idx
+                break
+
+        rank_text = f"#{my_rank}" if my_rank else "—"
+        total = len(ranked)
+
+        st.markdown(f"""
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <div style="font-weight:800;">내 정보</div>
+              <div class="profile-icon"><img src="{header_avatar_uri}"/></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:14px; margin:8px 2px 16px 2px;">
+              <div class="big">{rank_text}</div>
+              <div class="muted">전체 {total}명</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # 버튼: 상점으로 이동 (shop 모드)
+        if st.button("상점으로 이동", key="go_shop_side", help="모자를 구매/착용하러 가기"):
+            set_mode("shop")
+            st.rerun()
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # 모자 착용! 카드
+        st.markdown(f"""
+        <div class="card right-note">
+          <div class="emoji">🧢</div>
+          <div style="font-weight:800; margin-top:6px;">모자 착용!</div>
+          <div class="muted" style="margin-top:6px;">상점에서 모자를 구매하고 착용하면<br/>캐릭터 이미지가 바뀝니다.</div>
         </div>
         """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
 
 def view_char():
     u = st.session_state.user_data
@@ -286,11 +349,10 @@ def view_char():
     img_uri = get_char_image_uri(u["active_char"], hat_id if use_hat else None)
 
     st.markdown(f"""
-    <div class="card char-card">
-      <div class="char-box">
-        <div class="scene">
-          <img class="sprite" src="{img_uri}" />
-        </div>
+    <div class="card" style="max-width:420px; margin:10px auto 0;">
+      <div style="position:relative; width:100%; aspect-ratio: 4/5; border-radius:14px; border:1px dashed rgba(0,0,0,.06);
+                  background: radial-gradient(ellipse at center, rgba(255,147,48,0.10), transparent 60%), {card_bg}; overflow:hidden;">
+        <img style="position:absolute; left:50%; top:62%; transform:translate(-50%,-62%); width:min(56%, 220px); image-rendering:auto;" src="{img_uri}" />
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -338,12 +400,15 @@ def view_shop():
         st.button("📊 랭킹으로", on_click=lambda: set_mode("ranking"))
 
 # -------------------- route --------------------
-st.markdown('<div class="container">', unsafe_allow_html=True)
 mode = st.session_state.user_data.get("mode")
+container_class = "container tight-top" if mode == "ranking" else "container"
+st.markdown(f'<div class="{container_class}">', unsafe_allow_html=True)
+
 if mode == "ranking":
     view_ranking()
 elif mode == "shop":
     view_shop()
 else:
     view_char()
+
 st.markdown('</div>', unsafe_allow_html=True)
