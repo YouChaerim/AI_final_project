@@ -142,16 +142,62 @@ MODEL_SUMMARY = "gpt-4o-mini"   # 필요시 교체
 @st.cache_resource
 def get_ocr():
     from paddleocr import PaddleOCR
+
+    # 1) paddle이 CUDA로 빌드되었는지 점검해서 선호 디바이스 결정
+    device_pref = "gpu"
+    try:
+        import paddle
+        if hasattr(paddle.device, "is_compiled_with_cuda"):
+            has_cuda = paddle.device.is_compiled_with_cuda()
+        elif hasattr(paddle, "is_compiled_with_cuda"):
+            has_cuda = paddle.is_compiled_with_cuda()
+        else:
+            has_cuda = False
+        if not has_cuda:
+            device_pref = "cpu"
+    except Exception:
+        device_pref = "cpu"
+
+    # 2) 최신 PaddleOCR: device="gpu"/"cpu" 시도
     for kwargs in [
-        dict(lang="korean", use_angle_cls=True),
-        dict(lang="korean"),
-        dict(),  # 최후의 수단
+        dict(lang="korean", use_angle_cls=True, device=device_pref),
+        dict(lang="korean", device=device_pref),
+        dict(device=device_pref),
+    ]:
+        try:
+            return PaddleOCR(**kwargs)
+        except TypeError:
+            # 이 버전이 'device' 인자를 지원하지 않으면 다음 단계로
+            continue
+        except Exception:
+            # GPU 초기화 실패 등 런타임 오류 → CPU로 폴백 시도
+            if device_pref == "gpu":
+                break
+
+    # 3) CPU 강제 폴백 (device 인자 지원 O)
+    for kwargs in [
+        dict(lang="korean", use_angle_cls=True, device="cpu"),
+        dict(lang="korean", device="cpu"),
+        dict(device="cpu"),
     ]:
         try:
             return PaddleOCR(**kwargs)
         except TypeError:
             continue
-    st.error("❌ PaddleOCR 초기화 실패: 버전 호환 문제가 있습니다.")
+
+    # 4) 구버전 호환: use_gpu 플래그로 최후 시도
+    for kwargs in [
+        dict(lang="korean", use_angle_cls=True, use_gpu=(device_pref == "gpu")),
+        dict(lang="korean", use_gpu=(device_pref == "gpu")),
+        dict(use_gpu=(device_pref == "gpu")),
+        dict(),  # 마지막 완전 기본값
+    ]:
+        try:
+            return PaddleOCR(**kwargs)
+        except TypeError:
+            continue
+
+    st.error("❌ PaddleOCR 초기화 실패: GPU/CPU 모두 실패했습니다. (paddlepaddle-gpu 설치 및 CUDA 설정 확인)")
     st.stop()
 
 # =========================
