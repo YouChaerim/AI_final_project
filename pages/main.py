@@ -531,7 +531,7 @@ with col2:
                     "audio": False
                 },
                 async_processing=True,
-                # desired_playing_state=True
+                desired_playing_state=True
             )
 
             st.session_state.cam_active = bool(ctx) and getattr(ctx.state, "playing", False)
