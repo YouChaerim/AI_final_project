@@ -10,6 +10,8 @@ from openai import OpenAI
 from PyPDF2 import PdfReader
 from pdf2image import convert_from_bytes
 from pdf2image.exceptions import PDFInfoNotInstalledError  # 오타 수정
+from collections import Counter  # ✅ [추가] 보조 유사도 계산용
+from functools import lru_cache   # ✅ [추가] 임베딩 캐시(과금/호출 최소화)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RAG 모듈 경로 자동 인식
@@ -25,7 +27,7 @@ for _r in _CAND_ROOTS:
 # =========================
 # 환경변수 로드
 # =========================
-load_dotenv(dotenv_path="C:/Users/user/Desktop/main_project/.env", override=True)
+load_dotenv(dotenv_path="C:/Users/user/Desktop/main_project/AI_final_project/.env", override=True)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 POPPLER_PATH   = os.getenv("POPPLER_PATH")
 
@@ -210,6 +212,8 @@ def get_openai_client():
 
 client = get_openai_client()
 MODEL_SUMMARY = "gpt-4o-mini"
+EMBED_MODEL  = os.getenv("EMBED_MODEL", "text-embedding-3-small")  # ✅ [추가] 임베딩 모델 지정
+SIM_THRESHOLD = 0.95  # ✅ [추가] 코사인 유사도 기준
 
 # =========================
 # OCR (PaddleOCR)
@@ -242,11 +246,8 @@ def get_ocr():
         try:
             return PaddleOCR(**kwargs)
         except TypeError:
-            # 이 버전이 'device' 인자를 지원하지 않으면 다음 단계로
             continue
-
         except Exception:
-            # GPU 초기화 실패 등 런타임 오류 → CPU로 폴백 시도
             if device_pref == "gpu":
                 break
 
@@ -262,7 +263,6 @@ def get_ocr():
             continue
 
     # 4) 구버전 호환: use_gpu 플래그로 최후 시도
-
     for kwargs in [
         dict(lang="korean", use_angle_cls=True, use_gpu=(device_pref == "gpu")),
         dict(lang="korean", use_gpu=(device_pref == "gpu")),
@@ -541,6 +541,185 @@ def ask_gpt_about_wrong(qobj: dict, user_answer: str) -> str:
         return gpt_chat([{"role":"system","content":system},{"role":"user","content":user}], model=MODEL_SUMMARY, temperature=0.2, max_tokens=500)
     except Exception:
         return expl or "해설 생성에 실패했습니다."
+
+# 🔶 [교체] 텍스트 코사인 유사도 유틸 (BGE-M3-Korean(GPU) 우선, 실패 시 OpenAI → n-그램)
+# =========================
+from collections import Counter
+from functools import lru_cache
+
+# 임계값(기본 0.95). .env에 SIM_THRESHOLD=0.92 처럼 넣으면 코드 수정 없이 조정 가능
+SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", "0.75"))
+
+def _norm_text_kor(s: str) -> str:
+    if s is None:
+        return ""
+    s = str(s)
+    s = s.replace("\u200b", " ")  # zero-width space 제거
+    s = re.sub(r"\s+", " ", s, flags=re.S)
+    return s.strip().lower()
+
+def _canon_korean(s: str) -> str:
+    s = _norm_text_kor(s)
+    if not s:
+        return s
+    s = re.sub(r"[^\w가-힣]+$", "", s)
+    s = re.sub(r"(은|는|이|가|을|를|와|과|도|로|으로|에|에서|에게|께|부터|까지)$", "", s)
+
+    # ▼ 여기 목록에 '음','ㅁ' 추가
+    for suf in ("하다", "함", "한", "히", "음", "ㅁ"):
+        if s.endswith(suf) and len(s) > len(suf):
+            s = s[: -len(suf)]
+            break
+
+    if s.endswith("다") and len(s) >= 2:
+        s = s[:-1]
+    return s
+
+
+def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+    an = np.linalg.norm(a); bn = np.linalg.norm(b)
+    if an == 0 or bn == 0:
+        return 0.0
+    return float(np.dot(a, b) / (an * bn))
+
+def _char_ngrams_vec(s: str, n: int = 3) -> dict:
+    s = _norm_text_kor(s)
+    grams = [s[i:i+n] for i in range(max(0, len(s)-n+1))]
+    cnt = Counter(grams)
+    return cnt
+
+def _cosine_bag(s1: str, s2: str, n: int = 3) -> float:
+    """임베딩 실패 시 폴백: 문자 n그램 BoW 코사인"""
+    v1 = _char_ngrams_vec(s1, n)
+    v2 = _char_ngrams_vec(s2, n)
+    if not v1 or not v2:
+        return 0.0
+    keys = set(v1.keys()) | set(v2.keys())
+    a = np.array([v1.get(k, 0.0) for k in keys], dtype=float)
+    b = np.array([v2.get(k, 0.0) for k in keys], dtype=float)
+    return _cosine(a, b)
+
+@st.cache_resource
+def _get_bge_model():
+    """upskyy/bge-m3-korean 로컬 임베딩(GPU 우선). USE_BGE=0이면 비활성."""
+    if os.getenv("USE_BGE", "1") != "1":
+        return None
+    try:
+        from sentence_transformers import SentenceTransformer
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = SentenceTransformer("upskyy/bge-m3-korean", device=device)
+        model.max_seq_length = 256  # 짧은 답안 위주 최적화
+        return model
+    except Exception:
+        return None
+
+@lru_cache(maxsize=1024)
+def _embed_text_cached(txt: str):
+    """OpenAI 임베딩 캐시(폴백 경로)"""
+    try:
+        res = client.embeddings.create(model=EMBED_MODEL, input=[txt])
+        return res.data[0].embedding
+    except Exception:
+        return None
+
+def _cosine_sim_text(a: str, b: str) -> float:
+    """문자열 a, b의 유사도 점수(0~1)를 반환"""
+    # 0) 정규화 + 간단 표제어화
+    a = _norm_text_kor(a); b = _norm_text_kor(b)
+    if not a or not b:
+        return 0.0
+    ca = _canon_korean(a)
+    cb = _canon_korean(b)
+    texts = list(dict.fromkeys([a, b, ca, cb]))  # 중복 제거 유지 순서
+
+    # 1) 로컬 BGE-M3-Korean (GPU) 우선
+    m = _get_bge_model()
+    if m is not None:
+        try:
+            vecs = m.encode(
+                texts,
+                normalize_embeddings=True,   # 코사인 최적화
+                convert_to_numpy=True,
+                batch_size=4
+            )
+            idx = {t: i for i, t in enumerate(texts)}
+            pairs = [(a, b), (ca, cb), (a, cb), (ca, b)]
+            sims = [float(np.dot(vecs[idx[x]], vecs[idx[y]])) for x, y in pairs]
+            return max(sims)
+        except Exception:
+            pass
+
+    # 2) OpenAI 임베딩 폴백 (기존 경로)
+    try:
+        res = client.embeddings.create(model=EMBED_MODEL, input=texts)
+        vecs = [np.array(d.embedding, dtype=float) for d in res.data]
+        idx = {t: i for i, t in enumerate(texts)}
+        pairs = [(a, b), (ca, cb), (a, cb), (ca, b)]
+        sims = [_cosine(vecs[idx[x]], vecs[idx[y]]) for x, y in pairs]
+        if sims:
+            return max(sims)
+    except Exception:
+        # 2-1) 캐시 단건 임베딩(혹시 일부만 성공했을 수 있음)
+        ea = _embed_text_cached(a); eb = _embed_text_cached(b)
+        eca = _embed_text_cached(ca); ecb = _embed_text_cached(cb)
+        sims = []
+        if ea is not None and eb is not None:
+            sims.append(_cosine(np.array(ea, dtype=float), np.array(eb, dtype=float)))
+        if eca is not None and ecb is not None:
+            sims.append(_cosine(np.array(eca, dtype=float), np.array(ecb, dtype=float)))
+        if ea is not None and ecb is not None:
+            sims.append(_cosine(np.array(ea, dtype=float), np.array(ecb, dtype=float)))
+        if eca is not None and eb is not None:
+            sims.append(_cosine(np.array(eca, dtype=float), np.array(eb, dtype=float)))
+        if sims:
+            return max(sims)
+
+    # 3) 보조: n-그램 BoW 코사인 (초단답은 2그램이 유리)
+    n = 2 if max(len(a), len(b), len(ca), len(cb)) <= 6 else 3
+    return max(
+        (_cosine_bag(x, y, n=n) for x, y in [(a, b), (ca, cb), (a, cb), (ca, b)]),
+        default=0.0
+    )
+
+# st.write("신속하다 vs 빠르다:", _cosine_sim_text("넓음", "좁은"))
+# st.write("느림 vs 느리다:", _cosine_sim_text("느림", "느리다"))
+# st.write("빠 르다 vs 빠르다:", _cosine_sim_text("빠 르다", "빠르다"))
+# st.write("느으리다 vs 느리다:", _cosine_sim_text("느으리다", "느리다"))
+# st.write("재밌다 vs 느리다:", _cosine_sim_text("재밌다", "느리다"))
+# st.write("BGE loaded:", _get_bge_model() is not None)
+# ===== 여기부터: 실제 판정에 바로 쓸 수 있는 헬퍼 추가 =====
+
+def _dyn_threshold(u, a, base: float = None) -> float:
+    """
+    초단답(<=3자)일 때 임계값을 살짝 낮춰주는 옵션.
+    base 미지정이면 SIM_THRESHOLD 사용.
+    """
+    if base is None:
+        base = SIM_THRESHOLD
+    L = max(len(str(u).strip()), len(str(a).strip()))
+    return 0.90 if L <= 3 else base
+
+def cosine_is_match(user_text: str, answer_text_or_list, threshold: float = None, use_dynamic: bool = True) -> bool:
+    """
+    코사인 유사도로 '정답 여부'를 즉시 판단하는 헬퍼.
+    - answer_text_or_list: 문자열 또는 [문자열들]
+    - threshold: 지정 없으면 SIM_THRESHOLD 사용
+    - use_dynamic: True이면 초단답 완화(_dyn_threshold) 적용
+    """
+    base = SIM_THRESHOLD if threshold is None else float(threshold)
+
+    if isinstance(answer_text_or_list, (list, tuple)):
+        # 후보들 중 최대값으로 비교
+        sims = [_cosine_sim_text(user_text, a) for a in answer_text_or_list]
+        sim = max(sims) if sims else 0.0
+        thr = _dyn_threshold(user_text, answer_text_or_list[0], base) if (use_dynamic and sims) else base
+        return sim >= thr
+    else:
+        sim = _cosine_sim_text(user_text, answer_text_or_list)
+        thr = _dyn_threshold(user_text, answer_text_or_list, base) if use_dynamic else base
+        return sim >= thr
+
 
 # =========================
 # 공통 헤더
@@ -845,10 +1024,43 @@ with tab2:
         def _normalize(s):
             if isinstance(s, (list, tuple)): return [str(x).strip().lower() for x in s]
             return str(s).strip().lower()
+
+        # ✅ [수정] 코사인 유사도 판정 포함 (≥ 0.95 정답)
         def _is_correct(user, answer):
-            u_ = _normalize(user); a_ = _normalize(answer)
-            if isinstance(a_, list): return u_ in a_
-            return u_ == a_
+            u_ = _normalize(user)
+            a_ = _normalize(answer)
+
+            # 1) 완전 일치 우선
+            if isinstance(a_, list):
+                if u_ in a_:
+                    return True
+            else:
+                if u_ == a_:
+                    return True
+
+            # 2) 코사인 유사도 (임베딩 → 폴백 BoW)
+            try:
+                # ← 사이드바/환경변수에서 임계값 가져오기
+                thr = float(st.session_state.get("sim_threshold", SIM_THRESHOLD))
+
+                # (선택) 초단답 완화: _dyn_threshold가 있다면 사용
+                def _thr(u, a, base):
+                    try:
+                        return _dyn_threshold(u, a, base)  # 있으면 사용
+                    except NameError:
+                        return base
+
+                if isinstance(answer, (list, tuple)):
+                    sims = [_cosine_sim_text(user, a) for a in answer]
+                    if not sims:
+                        return False
+                    return max(sims) >= _thr(user, answer[0], thr)
+                else:
+                    return _cosine_sim_text(user, answer) >= _thr(user, answer, thr)
+
+            except Exception:
+                return False
+
 
         def _render_player():
             qlist = st.session_state.quiz_data
@@ -921,6 +1133,8 @@ with tab2:
                             st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
+                
+                
 
         _render_player()
 
@@ -936,13 +1150,32 @@ with tab2:
         # 유형별 통계
         by_tot = {"객관식":0, "OX":0, "단답형":0}
         by_ok  = {"객관식":0, "OX":0, "단답형":0}
+
         def _normalize(s):
             if isinstance(s, (list, tuple)): return [str(x).strip().lower() for x in s]
             return str(s).strip().lower()
+
+        # ✅ [수정] 결과 계산에도 동일한 코사인 유사도 기준 적용
         def _is_correct(user, answer):
-            u_ = _normalize(user); a_ = _normalize(answer)
-            if isinstance(a_, list): return u_ in a_
-            return u_ == a_
+            u_ = _normalize(user)
+            a_ = _normalize(answer)
+
+            if isinstance(a_, list):
+                if u_ in a_:
+                    return True
+            else:
+                if u_ == a_:
+                    return True
+
+            try:
+                if isinstance(answer, (list, tuple)):
+                    sims = [_cosine_sim_text(user, a) for a in answer]
+                    return (max(sims) if sims else 0.0) >= SIM_THRESHOLD
+                else:
+                    return _cosine_sim_text(user, answer) >= SIM_THRESHOLD
+            except Exception:
+                return False
+
         for i, qq in enumerate(qlist):
             t = (qq.get("type") or "").strip()
             if t not in by_tot: by_tot[t] = 0
