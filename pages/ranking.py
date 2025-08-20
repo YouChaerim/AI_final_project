@@ -64,32 +64,38 @@ if dark:
     card_bg = "#2C2C2E"; nav_bg = "#2C2C2E"; nav_link = "#F2F2F2"
     sub_text = "#CFCFCF"
 else:
-    bg_color = "#FAFAFA"; font_color = "#333"
-    card_bg = "white";    nav_bg = "rgba(255, 255, 255, 0.9)"; nav_link = "#000"
+    bg_color = "#F5F5F7"; font_color = "#2B2B2E"
+    card_bg = "#FFFFFF"; nav_bg = "rgba(255,255,255,.9)"; nav_link = "#000"
     sub_text = "#6B7280"
+
+# 폴더 페이지와 동일한 패널 배경/그림자 변수
+panel_bg     = "#1F1F22" if dark else "#FFFFFF"
+panel_shadow = "rgba(0,0,0,.35)" if dark else "rgba(0,0,0,.08)"
 
 st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap');
-html, body {{ background-color:{bg_color}; color:{font_color}; font-family:'Noto Sans KR', sans-serif; zoom:1.10; margin:0; }}
-.stApp {{ background-color:{bg_color}; }}
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;800;900&display=swap');
+html, body {{ background:{bg_color}; color:{font_color}; font-family:'Noto Sans KR', sans-serif; zoom:1.10; margin:0; }}
+.stApp {{ background:{bg_color}; }}
 .block-container {{ padding-top:0 !important; }}
-.container {{ max-width:1200px; margin:auto; padding:40px; }}
-/* 랭킹 화면에서만 위 패딩을 줄여 헤더와 타이틀 간격을 좁힘 */
-.container.tight-top {{ padding-top:16px; }}
-a {{ text-decoration:none !important; color:{font_color}; }}
+
+/* 본문 컨테이너: 헤더 바로 아래 간격 최소 (folder_page와 동일) */
+.container {{ max-width:1200px; margin:auto; padding:4px 40px 24px; }}
+.container.tight-top {{ padding:4px 40px 24px; }}
+
+a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !important; }}
 ::selection {{ background:#FF9330; color:white; }}
 
-/* 헤더 */
+/* ===== 헤더(고정 규격) ===== */
 .top-nav {{
   display:flex; justify-content:space-between; align-items:center;
-  padding:12px 0; margin-top:40px !important; background-color:{nav_bg};
-  box-shadow:0 2px 4px rgba(0,0,0,0.05);
+  padding:12px 0; margin-top:40px !important; background:{nav_bg};
+  box-shadow:0 2px 4px rgba(0,0,0,.05);
 }}
 .nav-left {{ display:flex; align-items:center; gap:60px; }}
-.top-nav .nav-left > div:first-child a {{ color:#000 !important; font-size:28px; font-weight:bold; }}
-.nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:600; }}
+.top-nav .nav-left > div:first-child a {{ color:#000 !important; font-size:28px; font-weight:900; }}
+.nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:700; }}
 .nav-menu div a {{ color:{nav_link} !important; transition:.2s; }}
 .nav-menu div:hover a {{ color:#FF9330 !important; }}
 
@@ -99,19 +105,27 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
   width:36px; height:36px; border-radius:50%;
   background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
   overflow:hidden; display:flex; align-items:center; justify-content:center;
-  box-shadow:0 1px 2px rgba(0,0,0,0.06);
+  box-shadow:0 1px 2px rgba(0,0,0,.06);
 }}
 .profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
 
 /* 공통 카드 */
 .card {{ background:{card_bg}; border:1px solid rgba(0,0,0,.06); border-radius:16px; padding:14px; box-shadow:0 8px 22px rgba(0,0,0,.06); margin-top:16px; }}
 
-/* 섹션 타이틀(오렌지 그라데이션 바) — 헤더와 더 가깝게 */
-.section-title {{
-  margin-top:6px; margin-bottom:14px; border-radius:14px;
-  background: linear-gradient(90deg, #FF9330 0%, #FF7A30 100%);
-  color:white; text-align:center; padding:26px 10px; font-size:28px; font-weight:800;
+/* ===== 폴더 페이지와 동일한 패널 규격 ===== */
+.panel {{
+  position: relative;
+  background:{panel_bg};
+  border-radius:18px;
+  box-shadow:0 6px 24px {panel_shadow};
+  overflow:hidden;
+  margin-top:0px;
 }}
+.panel-head {{
+  background: linear-gradient(90deg,#FF9330,#FF7A00);
+  color:white; text-align:center; font-size:34px; font-weight:900; padding:18px 20px;
+}}
+.panel-body {{ padding:24px 36px 20px; }}
 
 /* 컨트롤 바 */
 .toolbar {{ display:flex; gap:16px; align-items:center; }}
@@ -148,6 +162,9 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
 .full-btn:active {{ transform:translateY(1px); }}
 .right-note {{ text-align:center; padding:18px 10px; }}
 .right-note .emoji {{ font-size:42px; }}
+
+/* 스트림릿이 간혹 뿌리는 빈 블럭 제거 */
+.block-container > div:empty {{ display:none !important; margin:0 !important; padding:0 !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -185,23 +202,19 @@ header_avatar_uri = _avatar_uri_for_current_user()
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
-    <div style="font-size:28px; font-weight:bold;">
-      <a href="/" target="_self">🐾 딸깍공</a>
-    </div>
+    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
     <div class="nav-menu">
-      <div><a href="/"             target="_self">메인페이지</a></div>
-      <div><a href="/main"         target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle"   target="_self">PDF요약</a></div>
-      <div><a href="/folder_page"  target="_self">저장폴더</a></div>
-      <div><a href="/quiz"         target="_self">퀴즈</a></div>
-      <div><a href="/report"       target="_self">리포트</a></div>
-      <div><a href="/ranking"      target="_self">랭킹</a></div>
+      <div><a href="/mainpage" target="_self">메인페이지</a></div>
+      <div><a href="/main" target="_self">공부 시작</a></div>
+      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
+      <div><a href="/folder_page" target="_self">저장폴더</a></div>
+      <div><a href="/quiz" target="_self">퀴즈</a></div>
+      <div><a href="/report" target="_self">리포트</a></div>
+      <div><a href="/ranking" target="_self">랭킹</a></div>
     </div>
   </div>
   <div class="profile-group">
-    <div class="profile-icon" title="내 캐릭터">
-      <img src="{header_avatar_uri}" alt="avatar"/>
-    </div>
+    <div class="profile-icon" title="내 캐릭터"><img src="{header_avatar_uri}" alt="avatar"/></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -233,8 +246,10 @@ def _rank_avatar_uri() -> str:
 def view_ranking():
     u = st.session_state.user_data
 
-    # Title bar (orange gradient)
-    st.markdown('<div class="section-title">랭킹</div>', unsafe_allow_html=True)
+    # 폴더 페이지와 동일한 패널 구조로 제목/본문 래핑
+    st.markdown('<div class="panel">', unsafe_allow_html=True)
+    st.markdown('<div class="panel-head">랭킹</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel-body">', unsafe_allow_html=True)
 
     # Toolbar (기간 필터 + 검색)
     c1, c2 = st.columns([1,3])
@@ -324,6 +339,10 @@ def view_ranking():
           <div class="muted" style="margin-top:6px;">상점에서 모자를 구매하고 착용하면<br/>캐릭터 이미지가 바뀝니다.</div>
         </div>
         """, unsafe_allow_html=True)
+
+    # 패널 닫기
+    st.markdown('</div>', unsafe_allow_html=True)  # </div> .panel-body
+    st.markdown('</div>', unsafe_allow_html=True)  # </div> .panel
 
 def view_char():
     u = st.session_state.user_data

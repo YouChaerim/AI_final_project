@@ -99,26 +99,19 @@ def current_avatar_uri() -> str:
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
-:root {{
-  /* 오른쪽 카드 스택 상단 오프셋(히어로 상단과 정렬용) — 필요시 -24~-32px 사이로 미세 조정 */
-  --right-col-offset: -28px;
-}}
+:root {{ --right-col-offset: -28px; }}
 
-html, body {{
-  background-color:{bg_color}; color:{font_color};
-  font-family:'Noto Sans KR', sans-serif; zoom:1.10; margin:0;
-}}
+html, body {{ background-color:{bg_color}; color:{font_color}; font-family:'Noto Sans KR', sans-serif; zoom:1.10; margin:0; }}
 .stApp {{ background-color:{bg_color}; }}
 .block-container {{ padding-top:0 !important; }}
 .container {{ max-width:1200px; margin:auto; padding:40px; }}
 a {{ text-decoration:none !important; color:{font_color}; }}
 
+/* ===== 사이드바/툴바 완전 숨김 ===== */
+[data-testid="stSidebar"], [data-testid="stSidebarNav"], [data-testid="stToolbar"] {{ display: none !important; }}
+
 /* Header */
-.top-nav {{
-  display:flex; justify-content:space-between; align-items:center;
-  padding:12px 0; margin-top:-40px !important; background-color:{nav_bg};
-  box-shadow:0 2px 4px rgba(0,0,0,0.05);
-}}
+.top-nav {{ display:flex; justify-content:space-between; align-items:center; padding:12px 0; margin-top:-40px !important; background-color:{nav_bg}; box-shadow:0 2px 4px rgba(0,0,0,0.05); }}
 .nav-left {{ display:flex; align-items:center; gap:60px; }}
 .top-nav .nav-left > div:first-child a {{ color:#000 !important; font-size:28px; font-weight:bold; }}
 .nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:600; }}
@@ -127,76 +120,33 @@ a {{ text-decoration:none !important; color:{font_color}; }}
 
 /* Profile */
 .profile-group {{ display:flex; gap:16px; align-items:center; margin-right:12px; }}
-.profile-icon {{
-  width:36px; height:36px; border-radius:50%;
-  background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
-  overflow:hidden; display:flex; align-items:center; justify-content:center;
-  box-shadow:0 1px 2px rgba(0,0,0,0.06);
-}}
+.profile-icon {{ width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#DDEFFF,#F8FBFF); overflow:hidden; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 2px rgba(0,0,0,0.06); }}
 .profile-icon img {{ width:100%; height:100%; object-fit:contain; }}
 
-/* ====== 주황 히어로(공부 시작) ====== */
-.main-box {{
-  background:{dark_orange};
-  border-radius:14px;
-  padding:90px 0 140px 0;
-  text-align:center;
-  color:#fff;
-  font-size:36px;
-  font-weight:900;
-  margin-bottom:16px;
-}}
-.main-btn {{
-  margin-top:30px;
-  padding:16px 40px;
-  background:#fff;
-  color:#000;
-  font-weight:800;
-  border:none;
-  border-radius:8px;
-  font-size:22px;
-}}
+/* ====== 주황 히어로 ====== */
+.main-box {{ background:{dark_orange}; border-radius:14px; padding:90px 0 140px 0; text-align:center; color:#fff; font-size:36px; font-weight:900; margin-bottom:16px; }}
+.main-btn {{ margin-top:30px; padding:16px 40px; background:#fff; color:#000; font-weight:800; border:none; border-radius:8px; font-size:22px; }}
 
-/* ===== 공통 카드(Expander를 카드처럼) - 초밀착 ===== */
-div[data-testid="stExpander"] {{
-  background:#fff; border-radius:10px; border:1px solid #eee;
-  box-shadow:0 1px 2px rgba(0,0,0,0.04); overflow:hidden;
-  margin: 1px 0 !important;                 /* 카드 간 간격 1px */
-}}
+/* ===== 공통 카드 - 초밀착 ===== */
+div[data-testid="stExpander"] {{ background:#fff; border-radius:10px; border:1px solid #eee; box-shadow:0 1px 2px rgba(0,0,0,0.04); overflow:hidden; margin: 1px 0 !important; }}
 div[data-testid="stExpander"] > details {{ padding:0; }}
-div[data-testid="stExpander"] .st-expanderHeader,
-div[data-testid="stExpander"] summary {{
-  padding:8px 12px !important;              /* 헤더 패딩 축소 */
-  font-weight:800; list-style:none;
-  border-bottom:1px solid #f2f2f2;
-}}
-/* 화살표 숨김 */
+div[data-testid="stExpander"] .st-expanderHeader, div[data-testid="stExpander"] summary {{ padding:8px 12px !important; font-weight:800; list-style:none; border-bottom:1px solid #f2f2f2; }}
 div[data-testid="stExpander"] summary svg {{ display:none; }}
-div[data-testid="stExpander"] .st-expanderContent {{
-  padding: 4px 12px 8px !important;         /* 내용 패딩 축소 */
-}}
-/* 오늘 할 일 체크박스 간격 더 축소 */
+div[data-testid="stExpander"] .st-expanderContent {{ padding: 4px 12px 8px !important; }}
 div[data-testid="stExpander"] .stCheckbox {{ margin: 1px 0 !important; }}
 div[data-testid="stExpander"] .stCheckbox > label {{ padding: 1px 0 !important; gap: 8px !important; }}
-div[data-testid="stExpander"] .stCheckbox p,
-div[data-testid="stExpander"] .stCheckbox span {{ margin:0 !important; line-height:1.15 !important; }}
+div[data-testid="stExpander"] .stCheckbox p, div[data-testid="stExpander"] .stCheckbox span {{ margin:0 !important; line-height:1.15 !important; }}
 
 /* ===== 오른쪽 열 정렬/간격 ===== */
-.right-col-align {{ margin-top: var(--right-col-offset) !important; }}  /* ← 히어로 상단과 맞춤 */
+.right-col-align {{ margin-top: var(--right-col-offset) !important; }}
 .tight-stack [data-testid="stExpander"]{{ margin: 1px 0 !important; }}
 .tight-stack [data-testid="stElementContainer"]{{ margin-bottom: 4px !important; }}
 .tight-stack .stColumns {{ margin: 2px 0 !important; }}
 .tight-stack .stButton > button {{ margin-top: 0 !important; }}
 
-@media (max-width: 1200px) {{
-  .right-col-align {{ margin-top: -18px !important; }}   /* 화면 줄어들면 적당히 완화 */
-}}
-@media (max-width: 1024px) {{
-  .right-col-align {{ margin-top: -8px !important; }}
-}}
-@media (max-width: 820px) {{
-  .right-col-align {{ margin-top: 0 !important; }}       /* 모바일에선 기본 정렬 */
-}}
+@media (max-width: 1200px) {{ .right-col-align {{ margin-top: -18px !important; }} }}
+@media (max-width: 1024px) {{ .right-col-align {{ margin-top: -8px !important; }} }}
+@media (max-width: 820px) {{ .right-col-align {{ margin-top: 0 !important; }} }}
 
 header {{ display:none !important; }}
 ::selection {{ background:#FF9330; color:#fff; }}
@@ -212,9 +162,9 @@ header_avatar_uri = current_avatar_uri()
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
-    <div><a href="/" target="_self">🐾 딸깍공</a></div>
+    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
     <div class="nav-menu">
-      <div><a href="/" target="_self">메인페이지</a></div>
+      <div><a href="/mainpage" target="_self">메인페이지</a></div>
       <div><a href="/main" target="_self">공부 시작</a></div>
       <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
       <div><a href="/folder_page" target="_self">저장폴더</a></div>
@@ -223,26 +173,25 @@ st.markdown(f"""
       <div><a href="/ranking" target="_self">랭킹</a></div>
     </div>
   </div>
-  <div class="profile-group"><div class="profile-icon" title="내 캐릭터">
-    <img src="{header_avatar_uri}" alt="avatar"/></div>
+  <div class="profile-group">
+    <div class="profile-icon" title="내 캐릭터"><img src="{header_avatar_uri}" alt="avatar"/></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-# 로그인 버튼 자리
+# 로그인 버튼 자리(삭제) → 같은 높이의 공간만 유지
 nav_login = st.container()
 with nav_login:
-    st.markdown("<div class='stLoginBtn' style='position:absolute; top:26px; right:50px; z-index:10;'></div>", unsafe_allow_html=True)
     login_btn_col = st.columns([10, 1])[1]
     with login_btn_col:
-        if st.button("로그인", key="go_login", help="로그인 페이지로 이동", use_container_width=True):
-            st.switch_page("pages/login_page.py")
+        # 버튼 대신 동일 높이의 공간(약 40px)만 남겨서 레이아웃 간격 유지
+        st.markdown("<div style='height:40px'></div>", unsafe_allow_html=True)
 
 # 본문 2열
 col1, col2 = st.columns([2.5, 1])
 
 with col1:
-    # 주황 히어로(그대로)
+    # 주황 히어로
     st.markdown(f"""
     <div class="main-box">
       오늘 공부 시작하기<br>
@@ -251,6 +200,15 @@ with col1:
       </a>
     </div>
     """, unsafe_allow_html=True)
+
+    # 주황색 박스 바로 아래: 다크모드 버튼(기존 크기와 비슷하게)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    if st.button("🌗 다크모드", key="dark_toggle"):
+        st.session_state.dark_mode = not st.session_state.dark_mode
+        ud["dark_mode"] = st.session_state.dark_mode
+        with open("user_data.json", "w", encoding="utf-8") as f:
+            json.dump(ud, f, ensure_ascii=False, indent=2)
+        st.rerun()
 
 with col2:
     # 오른쪽 열: 상단 정렬 + 초밀착
@@ -277,7 +235,6 @@ with col2:
         with st.expander("⏰ 오늘 공부시간", expanded=True):
             st.write(f"{ud['study_hour']}시간 {ud['study_minute']}분")
 
-        # === 변경: 투두리스트 버튼 제거, '변경하기'만 전체 폭으로 ===
         if st.button("✏️ 변경하기", use_container_width=True):
             st.session_state.edit_mode = True
             st.session_state.todo_draft = "\n".join([i["text"] for i in ud["todo_items"]]) or ud.get("todo", "")
@@ -330,10 +287,4 @@ with col2:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# 다크모드 토글
-if st.button("🌗 다크모드 전환", key="dark_toggle"):
-    st.session_state.dark_mode = not st.session_state.dark_mode
-    ud["dark_mode"] = st.session_state.dark_mode
-    with open("user_data.json", "w", encoding="utf-8") as f:
-        json.dump(ud, f, ensure_ascii=False, indent=2)
-    st.rerun()
+# (하단) 다크모드 토글 블록은 제거됨 — 위에서 주황색 박스 바로 아래에 배치됨

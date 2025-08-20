@@ -1,5 +1,5 @@
 {
-  "todo": "ui수정",
+  "todo": "라\n라\n라",
   "memo": "중간고사 다음 주!",
   "study_hour": 1,
   "study_minute": 30,
@@ -9,9 +9,19 @@
   "equipped_hat": null,
   "todo_items": [
     {
-      "id": "eea4a147-74a0-46ea-9a1a-33abfc43b4f0",
-      "text": "ui수정",
-      "done": false
+      "id": "6ddb0563-88a3-4c01-949e-c75eb621299a",
+      "text": "라",
+      "done": true
+    },
+    {
+      "id": "e00cf619-4d6d-4dba-b8c8-c42c4222314e",
+      "text": "라",
+      "done": true
+    },
+    {
+      "id": "effd173e-d9e5-4250-b214-1edbe6a90642",
+      "text": "라",
+      "done": true
     }
   ],
   "nickname": "-",

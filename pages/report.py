@@ -183,15 +183,15 @@ a {{ text-decoration:none !important; }}
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
-    <div><a href="/" target="_self">🐾 딸깍공</a></div>
+    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
     <div class="nav-menu">
-      <div><a href="/"            target="_self">메인페이지</a></div>
-      <div><a href="/main"        target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle"  target="_self">PDF 요약</a></div>
+      <div><a href="/mainpage" target="_self">메인페이지</a></div>
+      <div><a href="/main" target="_self">공부 시작</a></div>
+      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
       <div><a href="/folder_page" target="_self">저장폴더</a></div>
-      <div><a href="/quiz"        target="_self">퀴즈</a></div>
-      <div><a href="/report"      target="_self">리포트</a></div>
-      <div><a href="/ranking"     target="_self">랭킹</a></div>
+      <div><a href="/quiz" target="_self">퀴즈</a></div>
+      <div><a href="/report" target="_self">리포트</a></div>
+      <div><a href="/ranking" target="_self">랭킹</a></div>
     </div>
   </div>
   <div class="profile-group">

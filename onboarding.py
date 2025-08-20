@@ -126,10 +126,28 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ===== 시작하기 버튼 (같은 탭 이동) =====
+# ⬇️ href만 / -> /?go=login 으로 변경 (UI 그대로)
 st.markdown("""
 <div class="start-btn">
-  <a href="/" target="_self">
+  <a href="/?go=login" target="_self">
     <button class="start">시작하기</button>
   </a>
 </div>
 """, unsafe_allow_html=True)
+
+# ===== 라우팅 처리: go=login 이면 로그인 페이지로 전환 =====
+qp = st.query_params
+def pick(v): return v[0] if isinstance(v, list) else (v or "")
+
+if pick(qp.get("go")) == "login":
+    # 새로고침 루프 방지: 파라미터 제거
+    try:
+        st.query_params.clear()
+    except:
+        pass
+    # Streamlit 멀티페이지 네비게이션
+    try:
+        st.switch_page("pages/login_page.py")
+    except Exception:
+        # (구버전 등으로 실패 시) 그냥 다시 실행
+        st.rerun()
