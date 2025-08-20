@@ -6,6 +6,7 @@ import cv2
 import os, json, time
 from collections import deque
 from datetime import datetime
+import math
 
 # === 성능 튜닝(가급적 최상단) ===
 cv2.setNumThreads(1)   # OpenCV 내부 스레드 경합 줄이기
@@ -269,6 +270,9 @@ if "pomodoro_start" not in st.session_state:
     st.session_state.pomodoro_start = time.time()
 if "pomodoro_duration" not in st.session_state:
     st.session_state.pomodoro_duration = 25 * 60
+if "last_study_tick_ts" not in st.session_state:
+    st.session_state.last_study_tick_ts = time.time()
+
 
 # ======== 🔴 빨간 박스 로직용 추가 상태 ========
 def _init_red_states():
@@ -464,6 +468,7 @@ col1, col2, col3 = st.columns([0.9, 2.2, 0.9])
 
 with col1:
     st.markdown('<div class="right-pane">', unsafe_allow_html=True)
+    st.markdown('<div style="height:56px;"></div>', unsafe_allow_html=True)
     st.markdown(
         '''
         <div class="soft-bg" style="padding:16px 18px; margin-bottom:12px;">
@@ -526,6 +531,7 @@ with col2:
                     "audio": False
                 },
                 async_processing=True,
+                desired_playing_state=True
             )
 
             st.session_state.cam_active = bool(ctx) and getattr(ctx.state, "playing", False)
@@ -542,16 +548,6 @@ with col2:
     st.markdown('</div>', unsafe_allow_html=True)  # panel 닫기
 
 with col3:
-        # --- 테스트용: 즉시 휴식 시작 버튼 ---
-    if st.button("⏸️ 즉시 휴식 시작", key="btn_jump_to_break_simple"):
-        now_ts = time.time()
-        # 남은 시간을 0으로 만들어서 25분 종료 상태로 처리
-        st.session_state.pomodoro_start = now_ts - st.session_state.pomodoro_duration
-        update_pomodoro()
-        try:
-            st.rerun()  # 바로 반영
-        except Exception:
-            pass
 
     st.markdown('<div class="right-pane">', unsafe_allow_html=True)
 
@@ -565,8 +561,42 @@ with col3:
         st_autorefresh(interval=1000, key="auto_refresh")
 
     update_pomodoro()
-    remaining = max(0, int(st.session_state.pomodoro_duration - (time.time() - st.session_state.pomodoro_start)))
+    # 안전한 remaining 계산
+    remain_exact = st.session_state.pomodoro_duration - (time.time() - st.session_state.pomodoro_start)
+    remaining = int(math.ceil(max(0, remain_exact)))
+    remaining = min(remaining, int(st.session_state.pomodoro_duration))  # ⭐ 상한 캡
+
+    # 같은 phase에서는 한 번에 -1초까지만 줄어들게
+    phase = (st.session_state.pomodoro_mode, st.session_state.pomodoro_duration)
+    if st.session_state.get("last_phase") == phase:
+        prev = st.session_state.get("last_remaining", remaining)
+        if remaining < prev - 1:
+            remaining = prev - 1
+    st.session_state.last_phase = phase
+    st.session_state.last_remaining = remaining
+
     mins, secs = divmod(remaining, 60)
+
+    # 진행바 0~1 클램프
+    ratio = remaining / st.session_state.pomodoro_duration if st.session_state.pomodoro_duration > 0 else 0.0
+    ratio = max(0.0, min(1.0, ratio))
+    
+    
+    # === 누적 공부 시간 틱(공부 중 + 카메라 on + 실제 재생 중일 때만 증가) ===
+    _now = time.time()
+    if (
+        st.session_state.get("pomodoro_mode") == "공부 중"
+        and st.session_state.get("start_camera", False)
+        and st.session_state.get("cam_active", False)
+        and not st.session_state.get("break_active", False)
+        and not st.session_state.get("ended", False)
+    ):
+        # 지난 틱으로부터 경과한 초를 누적 (오토리프레시가 1초여도 지연 대비 안전)
+        dt = int(max(0, _now - st.session_state.last_study_tick_ts))
+        st.session_state.total_study_sec += dt
+
+    # 마지막 틱 갱신
+    st.session_state.last_study_tick_ts = _now
 
     # ✅ 25분 종료 → 5분 휴식 시작 알림 (화려한 중앙 오버레이)
     # ✅ 25분 종료 → 5분 휴식 시작 알림 (화려한 중앙 오버레이)
@@ -657,8 +687,7 @@ with col3:
 
     # 진행률 표시
     st.progress(
-        remaining / st.session_state.pomodoro_duration 
-        if st.session_state.pomodoro_duration > 0 else 0.0
+        ratio
     )
 
     # soft-bg 닫기
@@ -693,6 +722,23 @@ with col3:
     _low_focus_threshold = 80             # 임계값
     _low_focus_sustain_sec = 5            # 이 시간(초) 이상 연속으로 80 이하일 때만 알림
     _low_focus_cooldown_sec = 180         # '계속 공부' 선택 시 재알림까지 대기시간(초)
+    
+        # 포매팅
+    _h = int(st.session_state.total_study_sec // 3600)
+    _m = int((st.session_state.total_study_sec % 3600) // 60)
+    _s = int(st.session_state.total_study_sec % 60)
+
+    # 👇 한켠에 들어가는 작은 카드(soft-bg)
+    st.markdown(
+        f"""
+        <div class="soft-bg" style="padding:12px 14px; margin-top:10px;">
+        <div style="font-weight:900; margin-bottom:4px;">⏳ 누적 공부 시간</div>
+        <div class="small-subtle"><b>{_h:02d}:{_m:02d}:{_s:02d}</b></div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 # ↓↓↓ 집중도 감지 + 모달 트리거(그대로 유지)
 if not ss.get("break_active", False) and not ss.get("ended", False):
@@ -758,9 +804,6 @@ if ss.get("rest_prompt_active", False):
 
     # else:  # 폴백 UI 없음(인라인 박스 제거)
 
-
-    # ↑↑↑ 여기까지 추가
-
     # (기존) 피로 누적 경고는 유지
     if st.session_state.fatigue_count >= 5:
         st.markdown(
@@ -769,20 +812,26 @@ if ss.get("rest_prompt_active", False):
         )
 
 
-    # 1초마다 UI 리프레시
-# 1초마다 UI 리프레시
+# _now = time.time()
+# if (
+#     st.session_state.get("start_camera", False)
+#     and st.session_state.get("cam_active", False)
+#     and not st.session_state.get("break_active", False)
+#     and not st.session_state.get("ended", False)
+#     and st.session_state.get("pomodoro_mode") == "공부 중"
+# ):
+    # 초기화 보강 (없으면 세팅)
+    if "last_study_tick_ts" not in st.session_state:
+        st.session_state.last_study_tick_ts = _now
 
-if (
-    st.session_state.get("start_camera", False)
-    and st.session_state.get("cam_active", False)
-    and not st.session_state.get("break_active", False)
-    and not st.session_state.get("ended", False)
-    and st.session_state.get("pomodoro_mode") == "공부 중"
-):
-    st.session_state.total_study_sec += 1
+    # 지난 틱 이후 실제 경과 초만큼 누적
+    dt = int(max(0, _now - st.session_state.last_study_tick_ts))
+    st.session_state.total_study_sec += dt
+
+# 마지막 틱 갱신(공부/휴식 여부 무관)
+st.session_state.last_study_tick_ts = _now
 
 remaining = max(0, int(st.session_state.pomodoro_duration - (time.time() - st.session_state.pomodoro_start)))
-
 
 # === 주기 저장 ===
 now = time.time()
