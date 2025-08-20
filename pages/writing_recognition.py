@@ -1,7 +1,7 @@
 # pages/ocr_quiz.py
 # -*- coding: utf-8 -*-
 import streamlit as st
-import os, json, base64, io, json5
+import os, json, base64, io, json
 from openai import OpenAI
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv

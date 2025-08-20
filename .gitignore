@@ -86,5 +86,3 @@ ragtest
 .DS_Store
 vectorstore
 quiz.py
-
-server
