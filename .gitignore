@@ -85,6 +85,7 @@ ragtest
 
 .DS_Store
 vectorstore
+quiz1.py
 quiz.py
 
 server

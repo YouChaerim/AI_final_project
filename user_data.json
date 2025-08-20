@@ -1,59 +1,30 @@
 {
-  "todo": "수학 예제 풀기\n영단어 암기",
+  "todo": "라\n라\n라",
   "memo": "중간고사 다음 주!",
   "study_hour": 1,
   "study_minute": 30,
   "dark_mode": false,
-  "nickname": "상혁",
-  "coins": 290,
-  "owned_items": [
-    "scarf"
-  ],
-  "equipped": {
-    "head": null,
-    "face": null,
-    "neck": "scarf",
-    "hand": null,
-    "pet": null,
-    "bg": null,
-    "char": "dog",
-    "frame": null
-  },
-  "points": 99000,
-  "level": 99,
-  "username": "-",
-  "rank": "-",
-  "inventory": [],
-  "base_key": "cat",
-  "base_char": "characters/cat.png",
-  "mode": "ranking",
-  "char_actions": {
-    "bear": {
-      "action": "움직이기",
-      "speed": 1.6
-    },
-    "cat": {
-      "action": "움직이기",
-      "speed": 2.0
-    },
-    "rabbit": {
-      "action": "서있기",
-      "speed": 1.0
-    },
-    "shiba": {
-      "action": "눕기",
-      "speed": 0.5
-    }
-  },
-  "active_char": "shiba",
-  "owned_hats": [
-    "cap"
-  ],
+  "active_char": "cat",
+  "owned_hats": [],
   "equipped_hat": null,
-  "folders": {
-    "필기 폴더": "",
-    "오답 폴더": "",
-    "메모장 폴더": ""
-  },
-  "todos": []
+  "todo_items": [
+    {
+      "id": "6ddb0563-88a3-4c01-949e-c75eb621299a",
+      "text": "라",
+      "done": true
+    },
+    {
+      "id": "e00cf619-4d6d-4dba-b8c8-c42c4222314e",
+      "text": "라",
+      "done": true
+    },
+    {
+      "id": "effd173e-d9e5-4250-b214-1edbe6a90642",
+      "text": "라",
+      "done": true
+    }
+  ],
+  "nickname": "-",
+  "coins": 500,
+  "mode": "ranking"
 }
