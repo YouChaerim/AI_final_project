@@ -4,8 +4,15 @@
   "study_hour": 1,
   "study_minute": 30,
   "dark_mode": false,
+  "active_char": "shiba",
+  "owned_hats": [
+    "cap"
+  ],
+  "equipped_hat": null,
+  "todo_items": [],
   "nickname": "상혁",
   "coins": 290,
+  "mode": "ranking",
   "owned_items": [
     "scarf"
   ],
@@ -26,7 +33,6 @@
   "inventory": [],
   "base_key": "cat",
   "base_char": "characters/cat.png",
-  "mode": "ranking",
   "char_actions": {
     "bear": {
       "action": "움직이기",
@@ -45,11 +51,6 @@
       "speed": 0.5
     }
   },
-  "active_char": "shiba",
-  "owned_hats": [
-    "cap"
-  ],
-  "equipped_hat": null,
   "folders": {
     "필기 폴더": "",
     "오답 폴더": "",
