@@ -469,19 +469,30 @@ col1, col2, col3 = st.columns([0.9, 2.2, 0.9])
 with col1:
     st.markdown('<div class="right-pane">', unsafe_allow_html=True)
     st.markdown('<div style="height:56px;"></div>', unsafe_allow_html=True)
+
     st.markdown(
         '''
         <div class="soft-bg" style="padding:16px 18px; margin-bottom:12px;">
         <div class="badge-head">📌 오늘의 목표</div>
         <ul style="margin:12px 0 0 0; font-size:1.12rem; list-style:none; padding-left:0;">
-            <li style="margin:10px 0 8px 0;"><span style="color:#6F50E5; font-size:1.2rem;">✔️</span> <span style="margin-left:8px;">단원 복습</span></li>
-            <li style="margin:8px 0;"><span style="color:#6F50E5; font-size:1.2rem;">✔️</span> <span style="margin-left:8px;">문제 풀이</span></li>
-            <li style="margin:0;"><span style="color:#6F50E5; font-size:1.2rem;">✔️</span> <span style="margin-left:8px;">암기 테스트</span></li>
+            <li class="goal-item" style="margin:10px 0 8px 0;">
+            <input class="goal-check" type="checkbox" id="goal_rev">
+            <label class="goal-label" for="goal_rev">단원 복습</label>
+            </li>
+            <li class="goal-item" style="margin:8px 0;">
+            <input class="goal-check" type="checkbox" id="goal_prob">
+            <label class="goal-label" for="goal_prob">문제 풀이</label>
+            </li>
+            <li class="goal-item" style="margin:0;">
+            <input class="goal-check" type="checkbox" id="goal_mem">
+            <label class="goal-label" for="goal_mem">암기 테스트</label>
+            </li>
         </ul>
         </div>
         ''',
         unsafe_allow_html=True
     )
+
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -531,7 +542,7 @@ with col2:
                     "audio": False
                 },
                 async_processing=True,
-                desired_playing_state=True
+                desired_playing_state=False #카메라 강제로 키기
             )
 
             st.session_state.cam_active = bool(ctx) and getattr(ctx.state, "playing", False)
