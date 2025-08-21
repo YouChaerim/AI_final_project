@@ -29,11 +29,9 @@ dark = ud.get("dark_mode", False)
 if dark:
     bg = "#1C1C1E"; fg = "#F2F2F2"; nav_bg = "#2C2C2E"
     panel_bg = "#1F1F22"; panel_shadow = "rgba(0,0,0,.35)"
-    nav_link = "#F2F2F2"; card_border = "rgba(255,255,255,.08)"; text_muted = "#C7C7CC"
 else:
     bg = "#F5F5F7"; fg = "#2B2B2E"; nav_bg = "rgba(255,255,255,.9)"
     panel_bg = "#FFFFFF"; panel_shadow = "rgba(0,0,0,.08)"
-    nav_link = "#000000"; card_border = "rgba(0,0,0,.06)"; text_muted = "#6B7280"
 
 # ---- 아바타 ----
 def _resolve_assets_root():
@@ -100,20 +98,28 @@ header, [data-testid="stToolbar"], #MainMenu, [data-testid="stSidebar"] {{ displ
 /* 본문 컨테이너 */
 .container {{ max-width:1200px; margin:auto; padding:4px 40px 24px; }}
 
-/* 공통 헤더 */
-a {{ text-decoration:none !important; }}
+/* ====== 헤더(폴더페이지와 동일 규격) ====== */
+a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 .top-nav {{
   display:flex; justify-content:space-between; align-items:center;
-  padding:12px 0; margin-top:40px !important; background:{nav_bg};
-  box-shadow:0 2px 4px rgba(0,0,0,.05);
+  padding:12px 0; margin-top:40px !important; margin-bottom:0 !important;
+  background:{nav_bg}; box-shadow:0 2px 4px rgba(0,0,0,.05);
 }}
 .nav-left {{ display:flex; align-items:center; gap:60px; }}
 .top-nav .nav-left > div:first-child a {{ color:#000 !important; font-size:28px; font-weight:900; }}
 .nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:700; }}
-.nav-menu div a {{ color:{nav_link} !important; transition:.2s; }}
+.nav-menu div a {{ color:#000 !important; transition:.2s; }}
 .nav-menu div:hover a {{ color:#FF9330 !important; }}
+
+/* 프로필(폴더페이지 동일) */
 .profile-group {{ display:flex; gap:16px; align-items:center; margin-right:12px; }}
-.profile-icon {{ width:36px; height:36px; border-radius:50%; overflow:hidden; }}
+.profile-icon {{
+  width:36px; height:36px; border-radius:50%;
+  background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
+  overflow:hidden; display:flex; align-items:center; justify-content:center;
+  box-shadow:0 1px 2px rgba(0,0,0,.06);
+}}
+.profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
 
 /* 패널 */
 .panel {{
@@ -158,17 +164,22 @@ a {{ text-decoration:none !important; }}
   padding:10px 12px;
 }}
 
-/* 🔒 하루집중도: 차트가 박스 밖으로 절대 못 나가게 강제 클리핑 */
+/* 🔒 하루집중도: 오픈월드식 박스 */
 .focus-guard {{
   border-radius:12px;
-  overflow:hidden;          /* 핵심: 밖으로 나가는 모든 요소를 자름 */
-  padding:0;                /* 내부 여백 0, 대신 Plotly 마진으로 조절 */
+  overflow:hidden;
+  padding:0;
+  overscroll-behavior:contain;
+  touch-action: pan-x;
+  position:relative;
 }}
 .focus-guard [data-testid="stPlotlyChart"],
 .focus-guard [data-testid="stPlotlyChart"]>div,
 .focus-guard .plotly, .focus-guard .js-plotly-plot, .focus-guard .main-svg {{
   width:100% !important; max-width:100% !important; overflow:hidden !important;
 }}
+.focus-guard .js-plotly-plot .draglayer {{ cursor: grab; }}
+.focus-guard .js-plotly-plot .draglayer:active {{ cursor: grabbing; }}
 
 /* 헤딩 앵커 숨김 */
 [data-testid="stHeading"] a,
@@ -179,7 +190,7 @@ a {{ text-decoration:none !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 공통 헤더 =================
+# ================= 공통 헤더 (폴더페이지와 동일) =================
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
@@ -368,7 +379,7 @@ with c3_chart:
             values=vals,
             hole=.58,
             textinfo='percent+label',
-            textposition='outside',  # ✅ 라벨을 바깥에 표시
+            textposition='outside',
             insidetextorientation='radial',
             sort=False
         )])
@@ -384,127 +395,150 @@ with c3_chart:
         )
         center_left(pts_fig, DONUT_H, right_bias=0.26, mid=0.78)
 
+# ======================= 하루 집중도 (오픈월드식 박스 + 팬 모드) =======================
+st.markdown("""
+<style>
+/* 하루 집중도 섹션 전체 폭을 캡(Clamp) */
+.focus-wrap{
+  width: min(100%, 980px);
+  margin: 8px 0 0;
+}
+.focus-wrap [data-testid="stVerticalBlockBorderWrapper"]{
+  max-width: 100% !important;
+  margin: 0 !important;
+}
+.focus-guard{
+  overflow:hidden;
+  border-radius:12px;
+  overscroll-behavior:contain;
+  touch-action:pan-x;
+}
+/* Plotly가 부모 폭을 넘지 않도록 강제 */
+.focus-guard [data-testid="stPlotlyChart"],
+.focus-guard .js-plotly-plot,
+.focus-guard .plot-container,
+.focus-guard .svg-container,
+.focus-guard .main-svg{
+  width:100% !important;
+  max-width:100% !important;
+  overflow:hidden !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# ======================= 하루 집중도 (클리핑 + 중앙 정렬 + 00~24 표기) =======================
 st.markdown('<div class="section-head"><span>하루 집중도</span><span class="chev">▾</span></div>', unsafe_allow_html=True)
 
-with st.container(border=True):
-    # 차트를 박스 내부에 강제 클리핑
-    st.markdown('<div class="focus-guard">', unsafe_allow_html=True)
+# ▶ 우리의 케이지 + 카드 + 하드 클리핑 레이어
+st.markdown('<div class="focus-cage"><div class="focus-card"><div class="clip-shield">', unsafe_allow_html=True)
 
-    focus_day = st.session_state.get("focus_day", default_end)
+focus_day = st.session_state.get("focus_day", default_end)
 
-    # 데모 세션
-    if "focus_events" in st.session_state:
-        base_events = st.session_state["focus_events"]
-    else:
-        rnd = random.Random(13)
-        base_events = [
-            {"time":"09:00","blinks":2,"yawns":1},
-            {"time":"09:30","blinks":3,"yawns":0},
-            {"time":"10:00","blinks":4,"yawns":2},
-        ]
-        for ev in base_events:
-            ev["blinks"] = max(0, ev["blinks"] + rnd.randint(-1,1))
-            ev["yawns"]  = max(0, ev["yawns"]  + rnd.randint(-1,1))
-
-    SESS_LEN = 25
-    sessions = []
+# ─ 데모 세션(그대로)
+if "focus_events" in st.session_state:
+    base_events = st.session_state["focus_events"]
+else:
+    rnd = random.Random(13)
+    base_events = [
+        {"time":"09:00","blinks":2,"yawns":1},
+        {"time":"09:30","blinks":3,"yawns":0},
+        {"time":"10:00","blinks":4,"yawns":2},
+    ]
     for ev in base_events:
-        try:
-            s = datetime.combine(focus_day, datetime.strptime(ev["time"], "%H:%M").time())
-        except Exception:
-            continue
-        e = s + timedelta(minutes=SESS_LEN)
-        sessions.append({"start": s, "end": e, "length": SESS_LEN,
-                         "blinks": int(ev.get("blinks",0)), "yawns": int(ev.get("yawns",0))})
-    sessions.sort(key=lambda x: x["start"])
+        ev("blinks")
+        ev["blinks"] = max(0, ev["blinks"] + rnd.randint(-1,1))
+        ev["yawns"]  = max(0, ev["yawns"]  + rnd.randint(-1,1))
 
-    # 2시간 단위 집계
-    day0 = datetime.combine(focus_day, time(0,0))
-    bin_starts = [day0 + timedelta(hours=h) for h in range(0, 24, 2)]
-    bar_x = bin_starts
+SESS_LEN = 25
+sessions = []
+for ev in base_events:
+    try:
+        s = datetime.combine(focus_day, datetime.strptime(ev["time"], "%H:%M").time())
+    except Exception:
+        continue
+    e = s + timedelta(minutes=SESS_LEN)
+    sessions.append({"start": s, "end": e, "length": SESS_LEN,
+                     "blinks": int(ev.get("blinks",0)), "yawns": int(ev.get("yawns",0))})
+sessions.sort(key=lambda x: x["start"])
 
-    BAR_WIDTH_RATIO = 0.40
-    width_ms = int(2*60*60*1000*BAR_WIDTH_RATIO)
+# 2시간 단위 집계
+day0 = datetime.combine(focus_day, time(0,0))
+bar_x = [day0 + timedelta(hours=h) for h in range(0, 24, 2)]
 
-    scores, hover = [], []
-    for h in range(0, 24, 2):
-        h0 = day0 + timedelta(hours=h)
-        h1 = h0 + timedelta(hours=2)
-        studied_min = 0.0; blink_part = 0.0; yawn_part = 0.0
-        for ses in sessions:
-            s, e, L = ses["start"], ses["end"], float(ses["length"])
-            inter = max(0.0, (min(e, h1) - max(s, h0)).total_seconds()/60.0)
-            if inter <= 0: continue
-            studied_min += inter
-            blink_part += ses["blinks"] * (inter / L)
-            yawn_part  += ses["yawns"]  * (inter / L)
-        b = int(round(blink_part)); y = int(round(yawn_part))
-        score = 0 if studied_min <= 0 else max(0, min(100, 100 - 5*b - 2*y))
-        scores.append(score)
-        hover.append([h0.strftime('%H:%M'), h1.strftime('%H:%M'),
-                      int(round(studied_min)), b, y, b*5, y*2])
+BAR_WIDTH_RATIO = 0.40
+width_ms = int(2*60*60*1000*BAR_WIDTH_RATIO)
 
-    # 00:00~24:00 강제 표기 + 경계선 라벨 여유
-    tickvals = [day0 + timedelta(hours=h) for h in range(25)]
-    ticktext = [f"{h:02d}:00" for h in range(25)]
+scores, hover = [], []
+for h in range(0, 24, 2):
+    h0 = day0 + timedelta(hours=h)
+    h1 = h0 + timedelta(hours=2)
+    studied_min = 0.0; blink_part = 0.0; yawn_part = 0.0
+    for ses in sessions:
+        s, e, L = ses["start"], ses["end"], float(ses["length"])
+        inter = max(0.0, (min(e, h1) - max(s, h0)).total_seconds()/60.0)
+        if inter <= 0: continue
+        studied_min += inter
+        blink_part += ses["blinks"] * (inter / L)
+        yawn_part  += ses["yawns"]  * (inter / L)
+    b = int(round(blink_part)); y = int(round(yawn_part))
+    score = 0 if studied_min <= 0 else max(0, min(100, 100 - 5*b - 2*y))
+    scores.append(score)
+    hover.append([h0.strftime('%H:%M'), h1.strftime('%H:%M'),
+                  int(round(studied_min)), b, y, b*5, y*2])
 
-    if dark:
-        bar_color = "#FFA149"; grid_col = "rgba(255,147,48,0.18)"; hover_bd = "#FFCC80"; grid_col_y = "rgba(255,255,255,0.10)"
-    else:
-        bar_color = "#FF9330"; grid_col = "rgba(0,0,0,0.08)"; hover_bd = "#FF9330"; grid_col_y = "rgba(0,0,0,0.06)"
+tickvals = [day0 + timedelta(hours=h) for h in range(25)]
+ticktext = [f"{h:02d}:00" for h in range(25)]
 
-    text_fg = [f"{int(v)}%" if v > 0 else "" for v in scores]
+if dark:
+    bar_color = "#FFA149"; grid_col = "rgba(255,147,48,0.18)"; grid_col_y = "rgba(255,255,255,0.10)"
+else:
+    bar_color = "#FF9330"; grid_col = "rgba(0,0,0,0.08)"; grid_col_y = "rgba(0,0,0,0.06)"
 
-    fig = go.Figure(go.Bar(
-        x=bar_x, y=scores, width=width_ms,
-        marker=dict(color=bar_color),
-        text=text_fg, textposition="inside", insidetextanchor="middle",
-        customdata=hover, cliponaxis=True,
-        hovertemplate=("시간대 %{customdata[0]}–%{customdata[1]}<br>"
-                       "평균 집중도 %{y:.0f}%<br>"
-                       "학습 %{customdata[2]}분<br>"
-                       "졸음(깜빡임) %{customdata[3]}회 (−%{customdata[5]}점)<br>"
-                       "하품 %{customdata[4]}회 (−%{customdata[6]}점)"
-                       "<extra></extra>")
-    ))
+text_fg = [f"{int(v)}%" if v > 0 else "" for v in scores]
 
-    # ⚙️ 레이아웃: 오른쪽/왼쪽 경계선 100% 내부에 머물도록 마진 + 범위 여유
-    fig.update_layout(
-        height=280,
-        margin=dict(l=10, r=14, t=6, b=44),  # r 살짝 확보 → 라벨/그리드가 경계선과 접촉 방지
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
-        bargap=0.42,
-        dragmode=False,
-        hoverlabel=dict(bgcolor="#FFFFFF", bordercolor=hover_bd,
-                        font_size=12, align="left", namelength=-1)
-    )
-    fig.update_xaxes(
-        type="date",
-        range=[day0 - timedelta(minutes=8), day0 + timedelta(hours=24, minutes=8)],
-        tickmode="array", tickvals=tickvals, ticktext=ticktext,
-        ticks="outside", ticklen=3, tickfont=dict(size=11),
-        showgrid=True, gridcolor=grid_col, gridwidth=1,
-        fixedrange=True, automargin=True, constrain="domain"
-    )
-    fig.update_yaxes(
-        title=None,
-        range=[0, 100], fixedrange=True,
-        tickmode="array", tickvals=[0, 25, 50, 75, 100],
-        tickfont=dict(size=11),
-        showgrid=True, gridcolor=grid_col_y, gridwidth=1,
-        zeroline=False
-    )
+# 보기 구간
+VIEW_HOURS = 24
+x0 = day0 + timedelta(hours=max(0.0, min(24.0 - VIEW_HOURS, 8 - VIEW_HOURS/2)))
+x1 = x0 + timedelta(hours=VIEW_HOURS)
 
-    st.plotly_chart(fig, use_container_width=True,
-                    config={"displayModeBar": False, "scrollZoom": False})
+fig = go.Figure(go.Bar(
+    x=bar_x, y=scores, width=width_ms,
+    marker=dict(color=bar_color),
+    text=text_fg, textposition="inside", insidetextanchor="middle",
+    customdata=hover, cliponaxis=True,
+    hovertemplate=("시간대 %{customdata[0]}–%{customdata[1]}<br>"
+                   "평균 집중도 %{y:.0f}%<br>"
+                   "학습 %{customdata[2]}분<br>"
+                   "졸음(깜빡임) %{customdata[3]}회 (−%{customdata[5]}점)<br>"
+                   "하품 %{customdata[4]}회 (−%{customdata[6]}점)<extra></extra>")
+))
 
-    st.markdown('</div>', unsafe_allow_html=True)
+fig.update_layout(
+    height=280,
+    margin=dict(l=10, r=10, t=6, b=44),
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    showlegend=False, bargap=0.42,
+    dragmode="pan",
+    uirevision="focus_pan_keep",
+)
 
-# 종료
-st.markdown("</div>", unsafe_allow_html=True)  # /panel-body
-st.markdown("</div>", unsafe_allow_html=True)  # /panel
-st.markdown("</div>", unsafe_allow_html=True)  # /container
+fig.update_xaxes(
+    type="date",
+    range=[x0, x1],
+    fixedrange=False,
+    tickmode="array", tickvals=tickvals, ticktext=ticktext,
+    ticks="outside", ticklen=3, tickfont=dict(size=11),
+    showgrid=True, gridcolor=grid_col, gridwidth=1,
+    automargin=True, constrain="domain"
+)
+fig.update_yaxes(
+    title=None, range=[0,100], fixedrange=True,
+    tickmode="array", tickvals=[0,25,50,75,100],
+    tickfont=dict(size=11),
+    showgrid=True, gridcolor=grid_col_y, gridwidth=1,
+    zeroline=False
+)
+
+st.plotly_chart(fig, use_container_width=True,
+                config={"displayModeBar": False, "scrollZoom": False, "doubleClick":"reset"})
+
+st.markdown('</div></div></div>', unsafe_allow_html=True)

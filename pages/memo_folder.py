@@ -55,8 +55,7 @@ p{ margin-top: 4px !important; margin-bottom: 8px !important; }
 .stTextArea textarea{line-height:1.5}
 .small-muted{color:#777; font-size:12px;}
 
-/* --- 저장폴더 이동 버튼 전용 스타일 ---
-   실제 마커 id(#go-folder-bottom)에 맞춰 타겟팅 */
+/* --- 저장폴더 이동 버튼 전용 스타일 --- */
 #go-folder-bottom + div button {
   background: #fff !important;
   color: #111 !important;
@@ -69,6 +68,21 @@ p{ margin-top: 4px !important; margin-bottom: 8px !important; }
 #go-folder-bottom + div button:hover {
   background: #fff !important;
   border-color: rgba(0,0,0,.20) !important;
+}
+
+/* --- 🔎 검색 버튼(오른쪽) 라인 정렬 --- */
+#memo-search-btn + div button{
+  height:38px !important;           /* 입력창 높이에 맞춤 */
+  margin-top:26px !important;       /* 라벨 높이만큼 내려서 한 줄 정렬 */
+  padding:0 16px !important;
+  border-radius:10px !important;
+  border:1px solid rgba(0,0,0,.12) !important;
+  background:#fff !important;
+  color:#111 !important;
+  box-shadow:0 1px 2px rgba(0,0,0,.04) !important;
+}
+#memo-search-btn + div button:hover{
+  border-color:rgba(0,0,0,.2) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -216,7 +230,16 @@ with left:
 
 with right:
     st.subheader("📅 날짜별 메모")
-    q = st.text_input("제목/내용 검색", placeholder="키워드를 입력하세요…", key="search_q")
+
+    # 🔎 검색 입력 + 버튼을 같은 줄에 배치
+    s1, s2 = st.columns([7, 1])
+    with s1:
+        q = st.text_input("제목/내용 검색", placeholder="키워드를 입력하세요…", key="search_q")
+    with s2:
+        st.markdown('<div id="memo-search-btn"></div>', unsafe_allow_html=True)
+        do_search = st.button("검색", key="memo-do-search")
+        if do_search:
+            st.rerun()
 
     all_dates = sorted(notes_by_date.keys(), reverse=True)
     sel = st.selectbox("날짜 선택", all_dates, index=0 if all_dates else None)

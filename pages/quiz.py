@@ -1,4 +1,4 @@
-# pages/quiz_only.py
+# pages/quiz.py
 # -*- coding: utf-8 -*-
 import os, re, json, random, base64
 import streamlit as st
@@ -16,7 +16,7 @@ load_dotenv(dotenv_path="C:/Users/user/Desktop/main_project/.env", override=True
 st.set_page_config(page_title="🧩 퀴즈", layout="wide", initial_sidebar_state="collapsed")
 
 # =========================
-# (추가) 헤더 구현을 위한 유저/에셋 로딩 — 랭킹 페이지와 동일 규격
+# (추가) 헤더 구현을 위한 유저/에셋 로딩 — 폴더 페이지와 동일 규격
 # =========================
 USER_JSON_PATH = "user_data.json"
 ASSETS_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets"))
@@ -70,23 +70,22 @@ _hdr_avatar_uri = _hdr_get_char_image_uri(
     _hdr_hat if (_hdr_hat in _hdr_user.get("owned_hats", [])) else None
 )
 
-# 테마 변수 (랭킹 페이지와 동일 로직)
+# 테마 변수 (폴더 페이지와 동일 논리)
 dark = bool(_hdr_user.get("dark_mode", False))
 if dark:
     bg_color = "#1C1C1E"; font_color = "#F2F2F2"
-    card_bg = "#2C2C2E"; nav_bg = "#2C2C2E"; nav_link = "#F2F2F2"
+    card_bg = "#2C2C2E"; nav_bg = "#2C2C2E"
     sub_text = "#CFCFCF"
 else:
     bg_color = "#F5F5F7"; font_color = "#2B2B2E"
-    card_bg = "#FFFFFF"; nav_bg = "rgba(255,255,255,.9)"; nav_link = "#000"
+    card_bg = "#FFFFFF"; nav_bg = "rgba(255,255,255,.9)"
     sub_text = "#6B7280"
 
-# 패널 배경/그림자 (랭킹 페이지 동일)
 panel_bg     = "#1F1F22" if dark else "#FFFFFF"
 panel_shadow = "rgba(0,0,0,.35)" if dark else "rgba(0,0,0,.08)"
 
 # =========================
-# 스타일 (헤더/패널 규격은 랭킹 페이지와 동일하게)
+# 스타일
 # =========================
 st.markdown(f"""
 <style>
@@ -98,21 +97,21 @@ html, body {{ background:{bg_color}; color:{font_color}; font-family:'Noto Sans 
 header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !important; }}
 ::selection {{ background:#FF9330; color:white; }}
 
-/* ===== 헤더(고정 규격) ===== */
+/* 헤더 */
+a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 .container {{ max-width:1200px; margin:auto; padding:4px 40px 24px; }}
-.container.tight-top {{ padding:4px 40px 24px; }}
 .top-nav {{
   display:flex; justify-content:space-between; align-items:center;
-  padding:12px 0; margin-top:40px !important; background:{nav_bg};
-  box-shadow:0 2px 4px rgba(0,0,0,.05);
+  padding:12px 0; margin-top:40px !important; margin-bottom:0 !important;
+  background:{nav_bg}; box-shadow:0 2px 4px rgba(0,0,0,.05);
 }}
 .nav-left {{ display:flex; align-items:center; gap:60px; }}
 .top-nav .nav-left > div:first-child a {{ color:#000 !important; font-size:28px; font-weight:900; }}
 .nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:700; }}
-.nav-menu div a {{ color:{nav_link} !important; transition:.2s; }}
+.nav-menu div a {{ color:#000 !important; transition:.2s; }}
 .nav-menu div:hover a {{ color:#FF9330 !important; }}
 
-/* 헤더 오른쪽 원형 아이콘 */
+/* 프로필 */
 .profile-group {{ display:flex; gap:16px; align-items:center; margin-right:12px; }}
 .profile-icon {{
   width:36px; height:36px; border-radius:50%;
@@ -122,55 +121,64 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
 }}
 .profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
 
-/* ===== 주황 타이틀 패널(고정 규격) ===== */
-.panel {{
-  position: relative;
-  background:{panel_bg};
-  border-radius:18px;
-  box-shadow:0 6px 24px {panel_shadow};
-  overflow:hidden;
-  margin-top:0px;
-}}
-.panel-head {{
-  background: linear-gradient(90deg,#FF9330,#FF7A00);
-  color:white; text-align:center; font-size:34px; font-weight:900; padding:18px 20px;
-}}
-.panel-body {{ padding:24px 36px 20px; }}
+/* 타이틀 패널 */
+.panel {{ position:relative; background:{panel_bg}; border-radius:18px; box-shadow:0 6px 24px {panel_shadow}; overflow:hidden; margin-top:0; }}
+.panel-head {{ background:linear-gradient(90deg,#FF9330,#FF7A00); color:#fff; text-align:center; font-size:32px; font-weight:900; padding:16px 18px; }}
+.panel-body {{ padding:20px 28px 16px; }}
 
-/* ── 기존 퀴즈 카드 UI 유지 ────────────────────────────────── */
-.section-wrap {{
-  background:#fff; border:1px solid #F1E6D8; border-radius:18px;
-  box-shadow:0 18px 48px rgba(17,24,39,.06);
-  padding:0;                 /* 상단 패딩 0 → 하얀 띠 제거 */
-  overflow:hidden;           /* 모서리 라운드 정확히 */
+/* 섹션 카드 */
+.section-wrap{{ background:transparent!important; border:0!important; box-shadow:none!important; padding:0!important; border-radius:0!important; display:flex; flex-direction:column; }}
+.section-head{{ background:linear-gradient(90deg,#FF9330,#FF7A00)!important; color:#fff!important; font-weight:900!important; height:88px!important; font-size:30px!important; padding:0 18px!important; margin:0!important; border-radius:0!important; display:flex!important; align-items:center!important; justify-content:space-between!important; }}
+.card-body{{ padding:0!important; gap:8px!important; min-height:0!important; display:flex; flex-direction:column; }}
+
+/* R1 카드들 */
+.sub-top{{ min-height:132px; display:flex; align-items:stretch; }}
+.sub-top-left{{ min-height:0!important; margin-top:0!important; }}
+.sub-top > .choice-card-marker{{ display:none; }}
+
+/* 🔽 요기 추가: 배팅 규칙 카드만 살짝 내리기 (유형 선택 옆 정렬) */
+.sub-top.bet-rule {{ margin-top: 40px; }}  /* 필요하면 6~12px 사이로 조정 */
+
+.info-card{{
+  background:linear-gradient(#fff,#fff) padding-box,
+            linear-gradient(90deg,#FFD09C,#FFB062,#FF7A00) border-box;
+  border:1px solid transparent; border-radius:12px;
+  padding:10px 12px; margin:0;
 }}
-.section-head{{
-  display:flex; align-items:center; justify-content:space-between;
-  background:linear-gradient(90deg,#FF9330,#FF7A00);
-  color:#fff; font-weight:900; font-size:22px;
-  padding:14px 18px; margin:0 0 14px 0; border-radius:18px 18px 0 0;
+.info-card .info-title{{ font-weight:900; font-size:13px; color:#FF7A00; margin-bottom:6px; }}
+.info-card .rule-list{{ margin:0; padding-left:18px; line-height:1.45; font-size:14px; }}
+
+.choice-card-marker + div{{
+  background:linear-gradient(#fff,#fff) padding-box,
+            linear-gradient(90deg,#FFD09C,#FFB062,#FF7A00) border-box;
+  border:1px solid transparent; border-radius:12px;
+  padding:10px 12px; margin:0;
 }}
-.card-body {{ padding:16px 18px 0; }}
-.subtle {{ color:#6B7280; font-size:14px; }}
+.choice-card-marker + div .info-title{{ font-weight:900; font-size:13px; color:#FF7A00; margin-bottom:6px; }}
+.choice-card-marker + div [data-testid="stCheckbox"]{{ margin-bottom:6px; }}
+
+.sub-top > .info-card,
+.sub-top > .choice-card-marker + div{{ height:100%; flex:1; }}
 
 label {{ font-weight:700; }}
 
-.primary-btn .stButton>button{{
-  height:48px; width:100%; padding:0 18px;
-  background:linear-gradient(90deg,#FF9330,#FF7A00);
-  color:#fff; border:0; border-radius:12px; font-weight:900;
-}}
+/* 버튼 */
+.primary-btn {{ margin-top:8px; }}
+.primary-btn .stButton>button{{ height:44px; width:100%; padding:0 18px; background:linear-gradient(90deg,#FF9330,#FF7A00); color:#fff; border:0; border-radius:12px; font-weight:900; }}
 .primary-btn .stButton>button:disabled{{ opacity:.45; cursor:not-allowed; }}
 
+/* 보기 버튼 */
 .opt2 .stButton>button{{ width:100%; border:1.5px solid #EFEFEF; background:#fff; border-radius:12px; padding:14px 16px; text-align:left; font-weight:700; box-shadow:0 1px 2px rgba(0,0,0,0.03); }}
 .opt2 .stButton>button:hover{{ border-color:#FFD2A8; }}
 .opt2.selected .stButton>button{{ border-color:#FFB066; box-shadow:0 0 0 2px rgba(255,138,0,.15) inset; background:linear-gradient(90deg,#FF9330,#FF7A00); color:#fff; }}
 
+/* 퀴즈 카드 */
 .quiz-shell{{ width:100%; background:#fff; border:2px solid #FFA65A; border-radius:10px; box-shadow:0 8px 24px rgba(17,24,39,.08); overflow:hidden; }}
 .quiz-body{{ padding:22px 24px 26px; }}
 .quiz-meta{{ font-weight:800; color:#FF7A00; margin-bottom:8px; }}
 .quiz-question{{ font-size:20px; font-weight:900; margin:6px 0 14px; }}
 
+/* 결과 */
 .result-wrap{{ background:#fff;border:1px solid #F1E6D8;border-radius:18px; box-shadow:0 18px 48px rgba(17,24,39,.06);padding:20px; }}
 .result-hero{{display:flex;flex-direction:column;align-items:center;gap:8px;margin:8px 0 16px;}}
 .score-ring{{width:140px;height:140px;border-radius:999px;background:conic-gradient(#FF9330 calc(var(--pct,0)*1%), #FFE1C2 0);display:flex;align-items:center;justify-content:center; box-shadow:0 6px 18px rgba(255,138,0,.18);}}
@@ -182,10 +190,14 @@ label {{ font-weight:700; }}
 .meter>div{{height:100%;background:#FF9330;}}
 .block-container > div:empty {{ display:none !important; margin:0 !important; padding:0 !important; }}
 .pill {{ background:#fff; color:#1f2937; font-weight:900; padding:8px 14px; border-radius:999px; }}
+
+/* 이전 마진 해킹 무력화 (행 정렬 방식 사용) */
+.section-head + .card-body{{ margin-top:0 !important; padding-top:0 !important; }}
+.align-right .card-body{{ margin-top:0 !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ===== 랭킹페이지와 동일한 헤더 마크업 =====
+# ===== 헤더 =====
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
@@ -302,8 +314,7 @@ def ask_gpt_about_wrong(qobj: dict, user_answer: str) -> str:
         return expl or "해설 생성에 실패했습니다."
 
 # =========================
-# 배팅 퀴즈 전용 생성기(추가)
-# 구성: 객관식 3 + OX 3 + 단답형 4 (난이도: 중~상)
+# 배팅 퀴즈 전용 생성기
 # =========================
 def _enforce_composition(qlist, comp):
     out, need = [], {k:v for k,v in comp.items()}
@@ -366,115 +377,137 @@ def generate_quiz_betting(content: str):
         return []
 
 # =========================
-# 상태 초기화 + 상단 타이틀 패널(주황색 박스)
+# 상태 초기화 + 상단 타이틀 패널
 # =========================
 st.markdown('<div class="container">', unsafe_allow_html=True)
 st.markdown('<div class="panel"><div class="panel-head">퀴즈</div><div class="panel-body">', unsafe_allow_html=True)
 
-# 최초 포인트 (가정 100P)
 if "user_points" not in st.session_state:
     st.session_state.user_points = 100
-
-# 분리된 단계: 일반 퀴즈 / 배팅 퀴즈
 if "quiz_stage" not in st.session_state: st.session_state.quiz_stage = "setup"
 if "bet_stage"  not in st.session_state: st.session_state.bet_stage  = "setup"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 상단 좌·우 섹션(동일 규격 헤더 바)
+# 상단 UI: 행(row) 단위 좌/우 짝 맞춤 (헤더/주황 타이틀은 그대로 두기)
 # ─────────────────────────────────────────────────────────────────────────────
 if st.session_state.quiz_stage == "setup" and st.session_state.bet_stage == "setup":
-    L, R = st.columns(2, gap="large")
+    make_btn = False
+    bet_btn  = False
 
-    with L:
-        st.markdown('<div class="section-wrap">', unsafe_allow_html=True)
-        st.markdown('<div class="section-head"><div>퀴즈 생성</div><div style="width:1px;"></div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="card-body">', unsafe_allow_html=True)
+    # 0행: 작은 섹션 헤더(주황 바) 좌/우
+    H1, H2 = st.columns(2, gap="small")
+    with H1:
+        st.markdown('<div class="section-wrap"><div class="section-head"><div>퀴즈 생성</div><div style="width:1px;"></div></div></div>', unsafe_allow_html=True)
+    with H2:
+        st.markdown(f'<div class="section-wrap"><div class="section-head"><div>배팅 퀴즈 생성</div><div class="pill">{st.session_state.user_points} P</div></div></div>', unsafe_allow_html=True)
 
-        # 유형 선택 + 문항 수
-        st.markdown("**유형 선택**")
-        t_obj = st.checkbox("객관식", value=True, key="t_obj")
-        t_ox  = st.checkbox("OX", value=True, key="t_ox")
-        t_sa  = st.checkbox("단답형", value=True, key="t_sa")
-        allowed_types = [t for t, ok in [("객관식", t_obj), ("OX", t_ox), ("단답형", t_sa)] if ok]
-
-        quiz_count = st.number_input("문항 수", min_value=4, max_value=20, value=8, step=1, key="count_input")
-        content_input = st.text_area("✍️ (퀴즈 생성) 학습 내용을 입력하세요", value="", height=140, key="quiz_content_input")
-
-        st.markdown('<div class="primary-btn" style="margin-top:8px;">', unsafe_allow_html=True)
-        make_btn = st.button("퀴즈 생성하기", key="make_quiz", use_container_width=True)
+    # 1행: 유형 선택  |  배팅 규칙
+    R1L, R1R = st.columns(2, gap="small")
+    with R1L:
+        st.markdown('<div class="sub-top sub-top-left">', unsafe_allow_html=True)
+        st.markdown('<div class="choice-card-marker"></div>', unsafe_allow_html=True)
+        with st.container():
+            st.markdown('<div class="info-title">유형 선택</div>', unsafe_allow_html=True)
+            t_obj = st.checkbox("객관식", value=True, key="t_obj")
+            t_ox  = st.checkbox("OX", value=True, key="t_ox")
+            t_sa  = st.checkbox("단답형", value=True, key="t_sa")
         st.markdown('</div>', unsafe_allow_html=True)
-
-        if make_btn:
-            content_to_use = (st.session_state.get("quiz_content_input","") or "").strip()
-            if not content_to_use:
-                st.warning("내용을 입력해주세요.")
-            else:
-                with st.spinner("GPT가 퀴즈를 생성 중입니다..."):
-                    st.session_state.summary_log = summarize_content(content_to_use)
-                    data = generate_quiz(content_to_use, quiz_count, allowed_types=set(allowed_types or {"객관식","OX","단답형"}))
-                    if not data:
-                        st.error("퀴즈 생성에 실패했어요. 내용을 조금 더 길게 입력해보세요.")
-                    else:
-                        st.session_state.quiz_data = data
-                        st.session_state.user_answers = {}
-                        st.session_state.current_idx = 0
-                        st.session_state.graded = False
-                        st.session_state.score = 0
-                        st.session_state.quiz_stage = "play"
-                        st.rerun()
-
-        st.markdown('</div></div>', unsafe_allow_html=True)
-
-    with R:
-        st.markdown('<div class="section-wrap">', unsafe_allow_html=True)
-        st.markdown(f'<div class="section-head"><div>배팅 퀴즈 생성</div><div class="pill">{st.session_state.user_points} P</div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="card-body">', unsafe_allow_html=True)
-
-        bet_points = st.number_input("배팅 포인트", min_value=0, max_value=max(0, st.session_state.user_points),
-                                     value=min(100, st.session_state.user_points), step=5, key="bet_points_input")
-
+    with R1R:
         st.markdown("""
-        <div class='subtle' style='margin:8px 0 4px;'>
-          • 문항 수는 <b>항상 10문항</b><br>
-          • 성공 기준: <b>7개 이상 정답</b> 시 <b>1.25배</b> 지급<br>
-          • 실패: 배팅 포인트 <b>전액 소멸</b>
+        <div class="sub-top bet-rule">
+          <div class="info-card">
+            <div class="info-title">배팅 규칙</div>
+            <ul class="rule-list">
+              <li>문항 수는 <b>항상 10문항</b></li>
+              <li>성공 기준: <b>7개 이상 정답</b> 시 <b>1.25배</b> 지급</li>
+              <li>실패: 배팅 포인트 <b>전액 소멸</b></li>
+            </ul>
+          </div>
         </div>
         """, unsafe_allow_html=True)
 
-        content_input_bet = st.text_area("✍️ (포인트 배팅) 학습 내용을 입력하세요", value="", height=140, key="bet_content_input")
-        can_bet = (st.session_state.user_points > 0) and (bet_points > 0) and (bet_points <= st.session_state.user_points)
+    # 2행: 문항 수  |  배팅 포인트
+    R2L, R2R = st.columns(2, gap="small")
+    with R2L:
+        quiz_count = st.number_input("문항 수", min_value=4, max_value=20, value=8, step=1, key="count_input")
+    with R2R:
+        st.number_input("배팅 포인트", min_value=0, max_value=max(0, st.session_state.user_points),
+                        value=min(100, st.session_state.user_points), step=5, key="bet_points_input",
+                        help="현재 보유 포인트 범위 내에서 배팅할 값을 입력하세요.")
 
-        st.markdown('<div class="primary-btn" style="margin-top:8px;">', unsafe_allow_html=True)
-        bet_btn = st.button("배팅 퀴즈 생성하기", key="make_bet_quiz", use_container_width=True, disabled=not can_bet)
+    # 3행: 학습 내용(좌)  |  학습 내용(우, 동일 라벨 요구)
+    R3L, R3R = st.columns(2, gap="small")
+    with R3L:
+        st.text_area("✍️ (퀴즈 생성) 학습 내용을 입력하세요", value="", height=140, key="quiz_content_input")
+    with R3R:
+        st.text_area("✍️ (퀴즈 생성) 학습 내용을 입력하세요", value="", height=140, key="bet_content_input")
+
+    # 4행: 버튼 좌/우
+    R4L, R4R = st.columns(2, gap="small")
+    with R4L:
+        st.markdown('<div class="primary-btn">', unsafe_allow_html=True)
+        make_btn = st.button("퀴즈 생성하기", key="make_quiz", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    with R4R:
+        st.markdown('<div class="primary-btn">', unsafe_allow_html=True)
+        bet_btn = st.button("배팅 퀴즈 생성하기", key="make_bet_quiz", use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        if bet_btn:
-            content_to_use = (st.session_state.get("bet_content_input","") or "").strip()
-            if not content_to_use:
-                st.warning("배팅 퀴즈용 내용을 입력해주세요.")
-            else:
-                with st.spinner("GPT가 배팅 퀴즈를 생성 중입니다... (10문제/중~상)"):
-                    data = generate_quiz_betting(content_to_use)
-                    if not data or len(data) != 10:
-                        st.error("배팅 퀴즈 생성에 실패했어요. 내용을 조금 더 길게 입력해보세요.")
-                    else:
-                        st.session_state.bet_quiz_data    = data
-                        st.session_state.bet_user_answers = {}
-                        st.session_state.bet_current_idx  = 0
-                        st.session_state.bet_score        = 0
-                        st.session_state.bet_goal         = 7
-                        st.session_state.bet_points_at_stake = int(bet_points)
-                        st.session_state.bet_stage = "play"
-                        st.rerun()
+    # ▶ 버튼 동작(기존 로직 그대로)
+    if make_btn:
+        content_to_use = (st.session_state.get("quiz_content_input","") or "").strip()
+        if not content_to_use:
+            st.warning("내용을 입력해주세요.")
+        else:
+            allowed_types = [t for t, ok in [
+                ("객관식", st.session_state.get("t_obj", True)),
+                ("OX",    st.session_state.get("t_ox", True)),
+                ("단답형", st.session_state.get("t_sa", True)),
+            ] if ok]
+            with st.spinner("GPT가 퀴즈를 생성 중입니다..."):
+                st.session_state.summary_log = summarize_content(content_to_use)
+                data = generate_quiz(content_to_use, st.session_state.get("count_input", 8),
+                                     allowed_types=set(allowed_types or {"객관식","OX","단답형"}))
+                if not data:
+                    st.error("퀴즈 생성에 실패했어요. 내용을 조금 더 길게 입력해보세요.")
+                else:
+                    st.session_state.quiz_data = data
+                    st.session_state.user_answers = {}
+                    st.session_state.current_idx = 0
+                    st.session_state.graded = False
+                    st.session_state.score = 0
+                    st.session_state.quiz_stage = "play"
+                    st.rerun()
 
-        st.markdown('</div></div>', unsafe_allow_html=True)
+    if bet_btn:
+        content_to_use = (st.session_state.get("bet_content_input","") or "").strip()
+        bet_points = int(st.session_state.get("bet_points_input", 0))
+        can_bet = (st.session_state.user_points > 0) and (bet_points > 0) and (bet_points <= st.session_state.user_points)
+        if not content_to_use:
+            st.warning("배팅 퀴즈용 내용을 입력해주세요.")
+        elif not can_bet:
+            st.warning("배팅 포인트를 확인해주세요.")
+        else:
+            with st.spinner("GPT가 배팅 퀴즈를 생성 중입니다... (10문제/중~상)"):
+                data = generate_quiz_betting(content_to_use)
+                if not data or len(data) != 10:
+                    st.error("배팅 퀴즈 생성에 실패했어요. 내용을 조금 더 길게 입력해보세요.")
+                else:
+                    st.session_state.bet_quiz_data    = data
+                    st.session_state.bet_user_answers = {}
+                    st.session_state.bet_current_idx  = 0
+                    st.session_state.bet_score        = 0
+                    st.session_state.bet_goal         = 7
+                    st.session_state.bet_points_at_stake = int(bet_points)
+                    st.session_state.bet_stage = "play"
+                    st.rerun()
 
 # 요약(선택)
 if st.session_state.get("summary_log") and st.session_state.quiz_stage == "setup":
     st.info(f"📚 내용 요약:\n\n{st.session_state.summary_log}")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 공통 정규화 함수(기존 이름 유지)
+# 공통 정규화 함수
 # ─────────────────────────────────────────────────────────────────────────────
 def _normalize(s):
     if isinstance(s, (list, tuple)): return [str(x).strip().lower() for x in s]
@@ -486,10 +519,9 @@ def _is_correct(user, answer):
     return u_ == a_
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 플레이 렌더러 (동일 페이지 내 '다음 페이지'처럼 전환)
+# 플레이 렌더러
 # ─────────────────────────────────────────────────────────────────────────────
 def _render_player_generic(kind="normal"):
-    # kind: "normal" | "bet"
     if kind == "normal":
         qlist = st.session_state.get("quiz_data")
         if not qlist: return
@@ -514,7 +546,6 @@ def _render_player_generic(kind="normal"):
     st.markdown(f'<div class="quiz-meta">{idx+1}/{total}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="quiz-question">{q.get("question","-")}</div>', unsafe_allow_html=True)
 
-    # 선택/입력
     if qtype in ["객관식","OX"]:
         options = q.get("options", []) or (["O","X"] if qtype=="OX" else [])
         labels = [f"{i+1}." for i in range(len(options))]
@@ -548,23 +579,18 @@ def _render_player_generic(kind="normal"):
         if ans_store not in st.session_state: st.session_state[ans_store] = {}
         st.session_state[ans_store][idx] = val
 
-    # 이동/제출
     cprev, cnext = st.columns([1,1], gap="small")
     with cprev:
         if idx > 0 and st.button("이전", key=f"{kind}_prev_{idx}"):
-            if kind=="normal":
-                st.session_state.current_idx -= 1
-            else:
-                st.session_state.bet_current_idx -= 1
+            if kind=="normal": st.session_state.current_idx -= 1
+            else:              st.session_state.bet_current_idx -= 1
             st.rerun()
 
     with cnext:
         if idx < total-1:
             if st.button("다음", key=f"{kind}_next_{idx}"):
-                if kind=="normal":
-                    st.session_state.current_idx += 1
-                else:
-                    st.session_state.bet_current_idx += 1
+                if kind=="normal": st.session_state.current_idx += 1
+                else:              st.session_state.bet_current_idx += 1
                 st.rerun()
         else:
             label = "제출/채점" if kind=="normal" else "제출/채점 (배팅)"
@@ -584,11 +610,11 @@ def _render_player_generic(kind="normal"):
                     st.session_state.bet_stage = "result"
                 st.rerun()
 
-    st.markdown('</div></div>', unsafe_allow_html=True)  # quiz-body, quiz-shell
-    st.markdown('</div>', unsafe_allow_html=True)  # section-wrap
+    st.markdown('</div></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 분기: 일반 퀴즈 플레이/결과 (단일 페이지 내 전환)
+# 결과 화면들
 # ─────────────────────────────────────────────────────────────────────────────
 if st.session_state.quiz_stage == "play":
     _render_player_generic("normal")
@@ -603,7 +629,6 @@ elif st.session_state.quiz_stage == "result":
     by_ok  = {"객관식":0, "OX":0, "단답형":0}
     wrong_list = []
 
-    # 집계 + 오답 수집
     for i, qq in enumerate(qlist):
         t = (qq.get("type") or "").strip()
         by_tot[t] = by_tot.get(t,0) + 1
@@ -634,7 +659,6 @@ elif st.session_state.quiz_stage == "result":
         unsafe_allow_html=True
     )
 
-    # 해설 섹션
     st.markdown('<div class="section-wrap" style="margin-top:14px;">', unsafe_allow_html=True)
     st.markdown('<div class="section-head"><div>해설</div><div style="width:1px;"></div></div>', unsafe_allow_html=True)
     if not wrong_list:
@@ -652,7 +676,6 @@ elif st.session_state.quiz_stage == "result":
                 st.markdown(f"**해설:**\n\n{explain}")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # GPT 자유 질문
     st.markdown('<div class="section-wrap" style="margin-top:14px;">', unsafe_allow_html=True)
     st.markdown('<div class="section-head"><div>GPT에게 질문하기</div><div style="width:1px;"></div></div>', unsafe_allow_html=True)
     free_q = st.text_area("시험 개념/오답 이유 등 무엇이든 질문해 보세요.", height=120, key="free_q_input_normal")
@@ -669,7 +692,7 @@ elif st.session_state.quiz_stage == "result":
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 분기: 배팅 퀴즈 플레이/결과 (단일 페이지 내 전환)
+# 배팅 퀴즈 결과
 # ─────────────────────────────────────────────────────────────────────────────
 if st.session_state.bet_stage == "play":
     _render_player_generic("bet")
@@ -682,7 +705,6 @@ elif st.session_state.bet_stage == "result":
     goal  = st.session_state.get("bet_goal", 7)
     stake = int(st.session_state.get("bet_points_at_stake", 0))
 
-    # 포인트 반영(중복 방지)
     won = score >= goal
     delta = int(round(stake * 1.25)) if won else -stake
     if "bet_result_applied" not in st.session_state:
@@ -723,7 +745,6 @@ elif st.session_state.bet_stage == "result":
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 해설 섹션
     wrong_list = []
     for i, qq in enumerate(qlist):
         if not _is_correct(answers.get(i,""), qq.get("answer","")):
@@ -745,7 +766,6 @@ elif st.session_state.bet_stage == "result":
                 st.markdown(f"**해설:**\n\n{explain}")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # GPT 자유 질문
     st.markdown('<div class="section-wrap" style="margin-top:14px;">', unsafe_allow_html=True)
     st.markdown('<div class="section-head"><div>GPT에게 질문하기</div><div style="width:1px;"></div></div>', unsafe_allow_html=True)
     free_q_bet = st.text_area("시험 개념/오답 이유 등 무엇이든 질문해 보세요.", height=120, key="free_q_input_bet")
@@ -764,7 +784,6 @@ elif st.session_state.bet_stage == "result":
 # =========================
 # 하단: 새로고침
 # =========================
-st.markdown("<hr style='border:none; border-top:1px dashed rgba(0,0,0,.08); margin: 16px 0 8px;'>", unsafe_allow_html=True)
 st.markdown("<div style='text-align:right;'>", unsafe_allow_html=True)
 if st.button("🔃새로고침", key="refresh_all"):
     for k in list(st.session_state.keys()):
@@ -773,15 +792,14 @@ if st.button("🔃새로고침", key="refresh_all"):
 st.markdown("</div>", unsafe_allow_html=True)
 
 # 패널/컨테이너 닫기
-st.markdown('</div></div>', unsafe_allow_html=True)  # panel-body, panel
-st.markdown("</div>", unsafe_allow_html=True)        # container
+st.markdown('</div></div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
-# =========================
-# ★ 랭킹과 동일하게: 타이틀 바 '각진 네모' 오버라이드 (마지막에 선언해야 적용)
-# =========================
+# 마지막 오버라이드(상단 패널 유지)
 st.markdown("""
 <style>
-.panel{ background: transparent !important; border-radius: 0 !important; box-shadow: none !important; }
-.panel-head{ border-radius: 0 !important; }
+.panel{ background: transparent !important; border-radius: 0 !important; box-shadow: none !important; margin-top: 0 !important; }
+.panel-head{ background: linear-gradient(90deg,#FF9330,#FF7A00) !important; color:#fff !important; text-align:center !important; font-size: 32px !important; font-weight: 900 !important; padding: 16px 18px !important; border-radius: 0 !important; }
+.panel-body{ padding:20px 28px 16px !important; }
 </style>
 """, unsafe_allow_html=True)

@@ -25,6 +25,19 @@
     }
   ],
   "nickname": "-",
-  "coins": 500,
-  "mode": "ranking"
+  "coins": 0,
+  "mode": "ranking",
+  "owned_chars": [],
+  "owned_glasses": [],
+  "equipped_glasses": null,
+  "owned_scarves": [],
+  "equipped_scarf": null,
+  "owned_clothes": [],
+  "equipped_clothes": null,
+  "owned_shoes": [],
+  "equipped_shoes": null,
+  "owned_wings": [
+    "angel_wing"
+  ],
+  "equipped_wings": null
 }

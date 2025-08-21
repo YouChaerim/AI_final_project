@@ -1,7 +1,5 @@
 # pages/folder_page.py
 # -*- coding: utf-8 -*-
-# NOTE: 딸깍공/메인페이지 클릭 시 바로 /mainpage 로 이동 (쿼리 핸들러 제거)
-
 import streamlit as st
 import os, json, base64
 
@@ -58,11 +56,8 @@ def get_char_image_uri(char_key: str) -> str:
     p = os.path.join(ASSETS_ROOT, "characters", f"{char_key}.png")
     if os.path.exists(p):
         return _to_data_uri(p)
-    return (
-        "data:image/svg+xml;utf8,"
-        "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'>"
-        "<text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>"
-    )
+    return "data:image/svg+xml;utf8," \
+           "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>"
 
 # ================== 세션 ==================
 if "user_data" not in st.session_state:
@@ -92,7 +87,7 @@ header {{ display:none !important; }}
 /* 본문 컨테이너: 상단 패딩 크게 줄임(24px → 4px) */
 .container {{ max-width:1200px; margin:auto; padding:4px 40px 24px; }}
 
-/* 헤더(공통 규격) */
+/* 헤더(위치 유지) */
 a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 .top-nav {{
   display:flex; justify-content:space-between; align-items:center;
@@ -111,22 +106,23 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 }}
 .profile-icon img {{ width:100%; height:100%; object-fit:contain; }}
 
-/* 패널: 헤더 바로 아래에 붙이기 */
+/* 패널: 상단 마진 제거(12px → 0px)로 바로 위로 붙게 */
 .panel {{
   position: relative;
   background:{panel_bg};
   border-radius:18px;
   box-shadow:0 6px 24px {panel_shadow};
   overflow:hidden;
-  margin-top:0px;
+  margin-top:0px;                 /* ← 여기! */
 }}
+
 .panel-head {{
   background: linear-gradient(90deg,#FF9330,#FF7A00);
   color:white; text-align:center; font-size:34px; font-weight:900; padding:18px 20px;
 }}
 .panel-body {{ padding:24px 36px 20px; }}
 
-/* 카드 */
+/* 카드: 왼쪽 정렬 */
 .card {{ text-align:left; }}
 .folder-icon img {{ width:108px; height:108px; object-fit:contain; margin-bottom:8px; }}
 .folder-title {{ margin: 6px 0 0; font-size:24px; font-weight:900; letter-spacing:.2px; }}
@@ -182,20 +178,20 @@ div[data-testid="stFileUploaderDropzone"]:hover {{ filter: brightness(.98); }}
 }}
 .save-row {{ display:flex; justify-content:center; margin-top:14px; }}
 
-/* 스트림릿이 간혹 뿌리는 빈 블럭 제거 */
+/* 스트림릿이 간혹 뿌리는 빈 블럭을 제거해 위 여백 더 줄이기(안전) */
 .block-container > div:empty {{ display:none !important; margin:0 !important; padding:0 !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ================== 헤더 (링크를 슬러그로 직접 이동) ==================
+# ================== 헤더 (그대로) ==================
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
-    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
+    <div><a href="/" target="_self">🐾 딸깍공</a></div>
     <div class="nav-menu">
-      <div><a href="/mainpage" target="_self">메인페이지</a></div>
+      <div><a href="/" target="_self">메인페이지</a></div>
       <div><a href="/main" target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
+      <div><a href="/ocr_paddle" target="_self">PDF 요약</a></div>
       <div><a href="/folder_page" target="_self">저장폴더</a></div>
       <div><a href="/quiz" target="_self">퀴즈</a></div>
       <div><a href="/report" target="_self">리포트</a></div>
@@ -215,9 +211,9 @@ st.markdown('<div class="panel-head">저장 폴더</div>', unsafe_allow_html=Tru
 st.markdown('<div class="panel-body">', unsafe_allow_html=True)
 
 folder_items = [
-    {"name": "PDF 폴더", "img": "cute1.png"},
-    {"name": "오답 폴더", "img": "cute2.png"},
-    {"name": "메모장 폴더", "img": "cute3.png"},
+    {"name": "PDF 폴더", "img": "cute1.png", "link": "/pdf_folder"},
+    {"name": "오답 폴더", "img": "cute2.png", "link": "/wrong_folder"},
+    {"name": "메모장 폴더", "img": "cute3.png", "link": "/memo_folder"},
 ]
 cols = st.columns(3)
 
@@ -225,38 +221,28 @@ for i, (col, folder) in enumerate(zip(cols, folder_items)):
     with col:
         st.markdown('<div class="card">', unsafe_allow_html=True)
 
-        # 아이콘
+        # 아이콘 (링크 걸기)
         ipath = os.path.join(ASSETS_ROOT, folder["img"])
         if os.path.exists(ipath):
             st.markdown(
-                f"<div class='folder-icon'><img src='{_to_data_uri(ipath)}'/></div>",
+                f"<a href='{folder['link']}' target='_self'>"
+                f"<div class='folder-icon'><img src='{_to_data_uri(ipath)}'/></div>"
+                f"</a>",
                 unsafe_allow_html=True
             )
         else:
-            st.markdown("<div class='folder-icon'>📁</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<a href='{folder['link']}' target='_self'><div class='folder-icon'>📁</div></a>",
+                unsafe_allow_html=True
+            )
 
-        # 제목
-        st.markdown(f"<div class='folder-title'>{folder['name']}</div>", unsafe_allow_html=True)
-
-        # 업로더
-        up_key = f"uploader_{i}"
-        st.markdown("<div class='upload-wrap'>", unsafe_allow_html=True)
-        up = st.file_uploader("", key=up_key, label_visibility="collapsed",
-                              accept_multiple_files=False, type=None)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if up is not None:
-            st.caption(f"선택됨: **{up.name}**")
-
-        # 저장 버튼
-        st.markdown("<div class='save-row'><div class='save-btn'>", unsafe_allow_html=True)
-        if st.button("저장하기", key=f"save_{i}"):
-            if up is None:
-                st.warning("먼저 파일을 선택해 주세요.")
-            else:
-                dst = save_uploaded_file(folder["name"], up)
-                st.success(f"✅ 저장 완료!\n`{dst}`")
-        st.markdown("</div></div>", unsafe_allow_html=True)
+        # 제목 (링크 걸기)
+        st.markdown(
+            f"<a href='{folder['link']}' target='_self'>"
+            f"<div class='folder-title'>{folder['name']}</div>"
+            f"</a>",
+            unsafe_allow_html=True
+        )
 
         st.markdown("</div>", unsafe_allow_html=True)  # /card
 
