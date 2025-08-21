@@ -87,6 +87,21 @@ label{ font-size:0.92rem !important; margin-bottom:2px !important; }
 #go-folder-left + div button:hover{
   border-color:rgba(0,0,0,.2) !important;
 }
+
+/* 🔎 검색 버튼을 검색창과 같은 라인에 정렬 */
+#search-btn + div button{
+  height:38px !important;            /* 입력창 높이에 맞춤 */
+  margin-top:26px !important;        /* 라벨 높이만큼 내려서 수평 정렬 */
+  padding:0 16px !important;
+  border-radius:10px !important;
+  border:1px solid rgba(0,0,0,.12) !important;
+  background:#fff !important;
+  color:#111 !important;
+  box-shadow:0 1px 2px rgba(0,0,0,.04) !important;
+}
+#search-btn + div button:hover{
+  border-color:rgba(0,0,0,.2) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -174,18 +189,29 @@ this_week  = dt.date.today().isocalendar().week
 cnt_total = len(all_items)
 cnt_today = sum(1 for d,_ in all_items if d == today_str)
 cnt_week  = sum(1 for d,_ in all_items if dt.date(*map(int, d.split("-"))).isocalendar().week == this_week)
-total_bytes = sum(int(it.get("size",0)) for _,it in all_items)
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3 = st.columns(3)
 with c1: st.markdown(f'<div class="statchip">총 파일: {cnt_total}</div>', unsafe_allow_html=True)
 with c2: st.markdown(f'<div class="statchip">오늘: {cnt_today}</div>', unsafe_allow_html=True)
 with c3: st.markdown(f'<div class="statchip">이번 주: {cnt_week}</div>', unsafe_allow_html=True)
-with c4: st.markdown(f'<div class="statchip">용량: {human_size(total_bytes)}</div>', unsafe_allow_html=True)
 
 # ------------------------ 툴바 (검색 + 날짜 캘린더) ------------------------
 t1, t2 = st.columns([2,1])
+
 with t1:
-    q = st.text_input("제목/메모/파일명 검색", placeholder="키워드…")
+    # 검색창과 검색 버튼을 같은 라인에 배치
+    s1, s2 = st.columns([7, 1])
+    with s1:
+        q = st.text_input("제목/메모/파일명 검색", placeholder="키워드…")
+    with s2:
+        # 버튼을 라벨 아래로 자연스럽게 내리기 위한 앵커 + CSS
+        st.markdown('<div id="search-btn"></div>', unsafe_allow_html=True)
+        do_search = st.button("검색", key="do-search")
+
+        # 버튼 클릭 시 즉시 필터 적용 (Streamlit은 버튼 클릭으로도 rerun 되지만 명시적으로 처리)
+        if do_search:
+            st.rerun()
+
 with t2:
     pick_date = st.date_input("날짜 선택", value=dt.date.today(), format="YYYY-MM-DD")
     sel_date_str = pick_date.strftime("%Y-%m-%d")
@@ -338,28 +364,6 @@ def render_card(date_key: str, it: dict):
         with a4:
             if st.button("🗑 삭제", use_container_width=True, key=f"del-{iid}"):
                 delete_item(date_key, iid)
-
-        # 미리보기 토글
-        pv_key = f"pv-{iid}"
-        st.session_state.setdefault(pv_key, False)
-        if st.button(("🔍 미리보기 닫기" if st.session_state[pv_key] else "🔍 미리보기"),
-                     use_container_width=True, key=f"pvbtn-{iid}"):
-            st.session_state[pv_key] = not st.session_state[pv_key]
-            st.experimental_rerun()
-
-        if st.session_state.get(pv_key, False):
-            data, size = read_bytes(it.get("stored_path",""))
-            if data:
-                b64 = base64.b64encode(data).decode()
-                st.markdown(
-                    f"<div class='preview-box'><iframe src='data:application/pdf;base64,{b64}' "
-                    f"width='100%' height='640' style='border:0;'></iframe></div>",
-                    unsafe_allow_html=True
-                )
-            else:
-                st.info(f"파일이 큽니다({human_size(size)}). 다운로드로 열어 주세요.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------------ 출력 ------------------------
 st.markdown(f"### {sel_date_str}")

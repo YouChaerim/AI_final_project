@@ -29,11 +29,9 @@ dark = ud.get("dark_mode", False)
 if dark:
     bg = "#1C1C1E"; fg = "#F2F2F2"; nav_bg = "#2C2C2E"
     panel_bg = "#1F1F22"; panel_shadow = "rgba(0,0,0,.35)"
-    nav_link = "#F2F2F2"; card_border = "rgba(255,255,255,.08)"; text_muted = "#C7C7CC"
 else:
     bg = "#F5F5F7"; fg = "#2B2B2E"; nav_bg = "rgba(255,255,255,.9)"
     panel_bg = "#FFFFFF"; panel_shadow = "rgba(0,0,0,.08)"
-    nav_link = "#000000"; card_border = "rgba(0,0,0,.06)"; text_muted = "#6B7280"
 
 # ---- 아바타 ----
 def _resolve_assets_root():
@@ -100,20 +98,28 @@ header, [data-testid="stToolbar"], #MainMenu, [data-testid="stSidebar"] {{ displ
 /* 본문 컨테이너 */
 .container {{ max-width:1200px; margin:auto; padding:4px 40px 24px; }}
 
-/* 공통 헤더 */
-a {{ text-decoration:none !important; }}
+/* ====== 헤더(폴더페이지와 동일 규격) ====== */
+a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 .top-nav {{
   display:flex; justify-content:space-between; align-items:center;
-  padding:12px 0; margin-top:40px !important; background:{nav_bg};
-  box-shadow:0 2px 4px rgba(0,0,0,.05);
+  padding:12px 0; margin-top:40px !important; margin-bottom:0 !important;
+  background:{nav_bg}; box-shadow:0 2px 4px rgba(0,0,0,.05);
 }}
 .nav-left {{ display:flex; align-items:center; gap:60px; }}
 .top-nav .nav-left > div:first-child a {{ color:#000 !important; font-size:28px; font-weight:900; }}
 .nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:700; }}
-.nav-menu div a {{ color:{nav_link} !important; transition:.2s; }}
+.nav-menu div a {{ color:#000 !important; transition:.2s; }}
 .nav-menu div:hover a {{ color:#FF9330 !important; }}
+
+/* 프로필(폴더페이지 동일) */
 .profile-group {{ display:flex; gap:16px; align-items:center; margin-right:12px; }}
-.profile-icon {{ width:36px; height:36px; border-radius:50%; overflow:hidden; }}
+.profile-icon {{
+  width:36px; height:36px; border-radius:50%;
+  background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
+  overflow:hidden; display:flex; align-items:center; justify-content:center;
+  box-shadow:0 1px 2px rgba(0,0,0,.06);
+}}
+.profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
 
 /* 패널 */
 .panel {{
@@ -158,22 +164,20 @@ a {{ text-decoration:none !important; }}
   padding:10px 12px;
 }}
 
-/* 🔒 하루집중도: 오픈월드식 박스(팬은 내부에서만 허용, 밖으로는 숨김) */
+/* 🔒 하루집중도: 오픈월드식 박스 */
 .focus-guard {{
   border-radius:12px;
-  overflow:hidden;                 /* 밖으로 나가는 요소 자름 */
+  overflow:hidden;
   padding:0;
-  overscroll-behavior:contain;     /* 외부로 스크롤 전파 금지 */
-  touch-action: pan-x;             /* 터치에서 가로 팬만 허용 */
+  overscroll-behavior:contain;
+  touch-action: pan-x;
   position:relative;
 }}
-/* Plotly가 부모 폭을 넘지 않도록 강제 */
 .focus-guard [data-testid="stPlotlyChart"],
 .focus-guard [data-testid="stPlotlyChart"]>div,
 .focus-guard .plotly, .focus-guard .js-plotly-plot, .focus-guard .main-svg {{
   width:100% !important; max-width:100% !important; overflow:hidden !important;
 }}
-/* 마우스 시각 힌트 */
 .focus-guard .js-plotly-plot .draglayer {{ cursor: grab; }}
 .focus-guard .js-plotly-plot .draglayer:active {{ cursor: grabbing; }}
 
@@ -186,7 +190,7 @@ a {{ text-decoration:none !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 공통 헤더 =================
+# ================= 공통 헤더 (폴더페이지와 동일) =================
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
@@ -396,25 +400,19 @@ st.markdown("""
 <style>
 /* 하루 집중도 섹션 전체 폭을 캡(Clamp) */
 .focus-wrap{
-  /* 980px을 상한으로, 화면이 작으면 100%로 줄어듦 */
   width: min(100%, 980px);
-  margin: 8px 0 0;            /* 위 여백만 조금 */
+  margin: 8px 0 0;
 }
-
-/* st.container(border=True)로 생기는 바깥 래퍼가 래퍼 폭을 넘지 않도록 */
 .focus-wrap [data-testid="stVerticalBlockBorderWrapper"]{
   max-width: 100% !important;
   margin: 0 !important;
 }
-
-/* 이미 쓰고 있는 클리핑 박스 */
 .focus-guard{
   overflow:hidden;
   border-radius:12px;
   overscroll-behavior:contain;
   touch-action:pan-x;
 }
-
 /* Plotly가 부모 폭을 넘지 않도록 강제 */
 .focus-guard [data-testid="stPlotlyChart"],
 .focus-guard .js-plotly-plot,
@@ -430,7 +428,7 @@ st.markdown("""
 
 st.markdown('<div class="section-head"><span>하루 집중도</span><span class="chev">▾</span></div>', unsafe_allow_html=True)
 
-# ▶ 우리의 케이지 + 카드 + 하드 클리핑 레이어 (st.container 대신 사용)
+# ▶ 우리의 케이지 + 카드 + 하드 클리핑 레이어
 st.markdown('<div class="focus-cage"><div class="focus-card"><div class="clip-shield">', unsafe_allow_html=True)
 
 focus_day = st.session_state.get("focus_day", default_end)
@@ -446,6 +444,7 @@ else:
         {"time":"10:00","blinks":4,"yawns":2},
     ]
     for ev in base_events:
+        ev("blinks")
         ev["blinks"] = max(0, ev["blinks"] + rnd.randint(-1,1))
         ev["yawns"]  = max(0, ev["yawns"]  + rnd.randint(-1,1))
 
@@ -461,7 +460,7 @@ for ev in base_events:
                      "blinks": int(ev.get("blinks",0)), "yawns": int(ev.get("yawns",0))})
 sessions.sort(key=lambda x: x["start"])
 
-# 2시간 단위 집계(그대로)
+# 2시간 단위 집계
 day0 = datetime.combine(focus_day, time(0,0))
 bar_x = [day0 + timedelta(hours=h) for h in range(0, 24, 2)]
 
@@ -490,13 +489,13 @@ tickvals = [day0 + timedelta(hours=h) for h in range(25)]
 ticktext = [f"{h:02d}:00" for h in range(25)]
 
 if dark:
-    bar_color = "#FFA149"; grid_col = "rgba(255,147,48,0.18)"; hover_bd = "#FFCC80"; grid_col_y = "rgba(255,255,255,0.10)"
+    bar_color = "#FFA149"; grid_col = "rgba(255,147,48,0.18)"; grid_col_y = "rgba(255,255,255,0.10)"
 else:
-    bar_color = "#FF9330"; grid_col = "rgba(0,0,0,0.08)"; hover_bd = "#FF9330"; grid_col_y = "rgba(0,0,0,0.06)"
+    bar_color = "#FF9330"; grid_col = "rgba(0,0,0,0.08)"; grid_col_y = "rgba(0,0,0,0.06)"
 
 text_fg = [f"{int(v)}%" if v > 0 else "" for v in scores]
 
-# 보기 구간(원하면 8~12로): 박스 밖 넘침과 무관, 편한 값으로
+# 보기 구간
 VIEW_HOURS = 24
 x0 = day0 + timedelta(hours=max(0.0, min(24.0 - VIEW_HOURS, 8 - VIEW_HOURS/2)))
 x1 = x0 + timedelta(hours=VIEW_HOURS)
@@ -518,14 +517,14 @@ fig.update_layout(
     margin=dict(l=10, r=10, t=6, b=44),
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     showlegend=False, bargap=0.42,
-    dragmode="pan",                 # 팬을 쓰든 안 쓰든 상관없이 «박스 밖은 잘림»
+    dragmode="pan",
     uirevision="focus_pan_keep",
 )
 
 fig.update_xaxes(
     type="date",
     range=[x0, x1],
-    fixedrange=False,               # 팬 허용(원하면 True로)
+    fixedrange=False,
     tickmode="array", tickvals=tickvals, ticktext=ticktext,
     ticks="outside", ticklen=3, tickfont=dict(size=11),
     showgrid=True, gridcolor=grid_col, gridwidth=1,
@@ -539,9 +538,7 @@ fig.update_yaxes(
     zeroline=False
 )
 
-# ▶ 하드 클리핑 레이어 안에 렌더 → 밖으로는 절대 못 나감
 st.plotly_chart(fig, use_container_width=True,
                 config={"displayModeBar": False, "scrollZoom": False, "doubleClick":"reset"})
 
-# 클리핑/카드 래퍼 닫기
 st.markdown('</div></div></div>', unsafe_allow_html=True)

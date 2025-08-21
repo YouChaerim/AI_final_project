@@ -3,7 +3,7 @@ import streamlit as st
 from streamlit_webrtc import webrtc_streamer
 import av
 import cv2
-import os, json, time
+import os, json, time, base64
 from collections import deque
 from datetime import datetime
 import math
@@ -44,6 +44,75 @@ else:
 
 accent_orange = "#FF9330"   # 포인트 컬러
 
+# =========================
+# (추가) 헤더 아바타 로딩 (퀴즈/저장폴더와 동일 기능)
+# =========================
+HDR_USER_JSON_PATH = "user_data.json"
+
+_HDR_DEFAULTS = {
+    "dark_mode": False,
+    "nickname": "-",
+    "coins": 500,
+    "mode": "ranking",
+    "active_char": "rabbit",
+    "owned_hats": [],
+    "equipped_hat": None,
+}
+
+def _hdr_load_user():
+    data = {}
+    if os.path.exists(HDR_USER_JSON_PATH):
+        try:
+            with open(HDR_USER_JSON_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    for k, v in _HDR_DEFAULTS.items():
+        if k not in data: data[k] = v
+    return data
+
+def _hdr_resolve_assets_root():
+    here = os.path.dirname(__file__)
+    cands = [
+        os.path.abspath(os.path.join(here, "assets")),
+        os.path.abspath(os.path.join(here, "..", "assets")),
+    ]
+    for p in cands:
+        if os.path.isdir(p):
+            return p
+    return cands[0]
+
+_HDR_ASSETS_ROOT = _hdr_resolve_assets_root()
+
+def _hdr_to_data_uri(abs_path: str) -> str:
+    with open(abs_path, "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+
+def _hdr_get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
+    keys = [char_key] + (["siba"] if char_key == "shiba" else [])
+    candidates = []
+    if hat_id:
+        for k in keys:
+            for sep in ["", "_", "-"]:
+                candidates.append(os.path.join(_HDR_ASSETS_ROOT, "items", "hats", f"{k}{sep}{hat_id}.png"))
+                candidates.append(os.path.join(_HDR_ASSETS_ROOT, "characters", f"{k}{sep}{hat_id}.png"))
+    for k in keys:
+        candidates.append(os.path.join(_HDR_ASSETS_ROOT, "characters", f"{k}.png"))
+    for p in candidates:
+        if os.path.exists(p):
+            return _hdr_to_data_uri(p)
+    # fallback
+    return ("data:image/svg+xml;utf8,"
+            "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'>"
+            "<text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>")
+
+_hdr_user = _hdr_load_user()
+_hdr_hat = _hdr_user.get("equipped_hat")
+header_avatar_uri = _hdr_get_char_image_uri(
+    _hdr_user.get("active_char", "rabbit"),
+    _hdr_hat if (_hdr_hat in _hdr_user.get("owned_hats", [])) else None
+)
+
 # ===== 스타일 =====
 st.markdown(f"""
 <style>
@@ -60,34 +129,28 @@ html, body {{
 .container {{ max-width: 1200px; margin: auto; padding: 40px; }}
 a {{ text-decoration: none !important; color: {font_color}; }}
 
-.top-nav {{
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 0;
-    margin-top: -40px !important;
-    background-color: {nav_bg};
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}}
-.nav-left {{ display: flex; align-items: center; gap: 60px; }}
-.top-nav .nav-left > div:first-child a {{
-    color: #000 !important;
-    font-size: 28px;
-    font-weight: bold;
-}}
-.nav-menu {{
-    display: flex;
-    gap: 36px;
-    font-size: 18px;
-    font-weight: 600;
-}}
-.nav-menu div a {{ color: #000 !important; transition: all 0.2s ease; }}
-.nav-menu div:hover a {{ color: {accent_orange} !important; }}
-.profile-group {{ display: flex; gap: 16px; align-items: center; }}
-.profile-icon {{
-    background-color: #888; width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
-}}
+/* ── 헤더(저장폴더/퀴즈와 동일 규격) ─────────────────────────── */
 header {{ display: none !important; }}
+a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
+.top-nav {{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:12px 0; margin-top:-40px !important; margin-bottom:0 !important; /* 컨테이너 padding(40) 상쇄 */
+  background:{nav_bg};
+  box-shadow:0 2px 4px rgba(0,0,0,.05);
+}}
+.nav-left {{ display:flex; align-items:center; gap:60px; }}
+.top-nav .nav-left > div:first-child a {{ color:#000 !important; font-size:28px; font-weight:900; }}
+.nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:700; }}
+.nav-menu div a {{ color:#000 !important; transition:.2s; }}
+.nav-menu div:hover a {{ color:#FF9330 !important; }}
+.profile-group {{ display:flex; gap:16px; align-items:center; margin-right:12px; }}
+.profile-icon {{
+  width:36px; height:36px; border-radius:50%;
+  background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
+  overflow:hidden; display:flex; align-items:center; justify-content:center;
+  box-shadow:0 1px 2px rgba(0,0,0,.06);
+}}
+.profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
 
 /* [UI] 공통 카드/패널 */
 .card {{
@@ -150,23 +213,24 @@ header {{ display: none !important; }}
 </style>
 """, unsafe_allow_html=True)
 
+# ── 헤더 (저장폴더/퀴즈와 동일 구조 & 캐릭터 표시) ──
 st.markdown('<div class="container">', unsafe_allow_html=True)
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
-    <div><a href="/" target="_self">🐾 딸깍공</a></div>
+    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
     <div class="nav-menu">
-      <div><a href="/"   target="_self">메인페이지</a></div>
-      <div><a href="/main"   target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle" target="_self">필기</a></div>
+      <div><a href="/mainpage"   target="_self">메인페이지</a></div>
+      <div><a href="/main"       target="_self">공부 시작</a></div>
+      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
       <div><a href="/folder_page" target="_self">저장폴더</a></div>
-      <div><a href="/quiz" target="_self">퀴즈</a></div>
-      <div><a href="/report" target="_self">리포트</a></div>
-      <div><a href="/ranking" target="_self">랭킹</a></div>
+      <div><a href="/quiz"       target="_self">퀴즈</a></div>
+      <div><a href="/report"     target="_self">리포트</a></div>
+      <div><a href="/ranking"    target="_self">랭킹</a></div>
     </div>
   </div>
   <div class="profile-group">
-    <div class="profile-icon" title="내 프로필"></div>
+    <div class="profile-icon" title="내 캐릭터"><img src="{header_avatar_uri}" alt="avatar"/></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -273,7 +337,6 @@ if "pomodoro_duration" not in st.session_state:
 if "last_study_tick_ts" not in st.session_state:
     st.session_state.last_study_tick_ts = time.time()
 
-
 # ======== 🔴 빨간 박스 로직용 추가 상태 ========
 def _init_red_states():
     ss = st.session_state
@@ -288,7 +351,6 @@ def _init_red_states():
     ss.setdefault("awarded_hours", 0)
     ss.setdefault("ended", False)
     ss.setdefault("last_break_reason", None)
-    # ✅ 휴식 시작 알림용 플래그(추가) — 이름/기존 변수 충돌 없음
     ss.setdefault("show_break_alert", False)
 
 _init_red_states()
@@ -306,7 +368,6 @@ def start_break(seconds=300, reason="manual"):
     ss.rest_prompt_active = False
     ss.low_focus_since = None
     ss.last_break_reason = reason
-    # ✅ 25분 종료 → 5분 휴식 시작 시 알림을 한 번 띄우기 위한 트리거
     ss.show_break_alert = (reason == "pomodoro")
 
 def end_break():
@@ -316,7 +377,7 @@ def end_break():
     ss.pomodoro_mode = "공부 중"
     ss.pomodoro_duration = 25 * 60
     ss.pomodoro_start = time.time()
-    ss.show_start_alert = True  # (기존 동작 유지)
+    ss.show_start_alert = True
 
 # ======== 뽀모도로 업데이트 ========
 def update_pomodoro():
@@ -492,8 +553,6 @@ with col1:
         ''',
         unsafe_allow_html=True
     )
-
-
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(
@@ -512,12 +571,9 @@ with col1:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with col2:
-    # --- 중앙 카메라 패널(오렌지 헤더) ---
     st.markdown('<div class="panel cam-wrap">', unsafe_allow_html=True)
-    # st.markdown('<div class="panel-head">📷 실시간 집중도 감지</div>', unsafe_allow_html=True)
     st.markdown('<div class="panel-body">', unsafe_allow_html=True)
 
-    # 👉 좌우 스페이서 + 카메라 영역 (원하는 비율로 조정)
     spacer_l, cam_col, spacer_r = st.columns([0.10, 0.80, 0.27])
 
     with cam_col:
@@ -535,15 +591,15 @@ with col2:
         )
         if st.session_state.start_camera and not st.session_state.ended:
             ctx = webrtc_streamer(
-                key="camera",
-                video_frame_callback=video_frame_callback,
-                media_stream_constraints={
-                    "video": {"width": {"ideal": cam_cap_w}, "height": {"ideal": cam_cap_h}},
-                    "audio": False
-                },
-                async_processing=True,
-                desired_playing_state=False #카메라 강제로 키기
-            )
+    key="camera",
+    video_frame_callback=video_frame_callback,
+    media_stream_constraints={
+        "video": {"width": {"ideal": cam_cap_w}, "height": {"ideal": cam_cap_h}},
+        "audio": False
+    },
+    async_processing=True,
+    desired_playing_state=False  # 카메라 강제로 키기
+)
 
             st.session_state.cam_active = bool(ctx) and getattr(ctx.state, "playing", False)
         else:
@@ -552,32 +608,27 @@ with col2:
                 f'<div style="width:{cam_disp_w}px; height:{cam_disp_h}px; background: transparent;"></div>',
                 unsafe_allow_html=True
             )
-        st.markdown('</div>', unsafe_allow_html=True)  # 카메라 중앙 래퍼 닫기
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)  # panel-body 닫기
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('<div class="panel-foot small-subtle">웹캠 연결 후 하품/졸음 감지를 통해 실시간으로 집중도를 계산합니다.</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)  # panel 닫기
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with col3:
-
     st.markdown('<div class="right-pane">', unsafe_allow_html=True)
 
-    # --- 오른쪽 패널(타이머 + 집중도) ---
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.markdown('<div class="panel-body">', unsafe_allow_html=True)
 
-    # 1초마다 UI 리프레시
     from streamlit_autorefresh import st_autorefresh
     with st.sidebar:
         st_autorefresh(interval=1000, key="auto_refresh")
 
     update_pomodoro()
-    # 안전한 remaining 계산
     remain_exact = st.session_state.pomodoro_duration - (time.time() - st.session_state.pomodoro_start)
     remaining = int(math.ceil(max(0, remain_exact)))
-    remaining = min(remaining, int(st.session_state.pomodoro_duration))  # ⭐ 상한 캡
+    remaining = min(remaining, int(st.session_state.pomodoro_duration))
 
-    # 같은 phase에서는 한 번에 -1초까지만 줄어들게
     phase = (st.session_state.pomodoro_mode, st.session_state.pomodoro_duration)
     if st.session_state.get("last_phase") == phase:
         prev = st.session_state.get("last_remaining", remaining)
@@ -587,13 +638,9 @@ with col3:
     st.session_state.last_remaining = remaining
 
     mins, secs = divmod(remaining, 60)
-
-    # 진행바 0~1 클램프
     ratio = remaining / st.session_state.pomodoro_duration if st.session_state.pomodoro_duration > 0 else 0.0
     ratio = max(0.0, min(1.0, ratio))
-    
-    
-    # === 누적 공부 시간 틱(공부 중 + 카메라 on + 실제 재생 중일 때만 증가) ===
+
     _now = time.time()
     if (
         st.session_state.get("pomodoro_mode") == "공부 중"
@@ -602,15 +649,11 @@ with col3:
         and not st.session_state.get("break_active", False)
         and not st.session_state.get("ended", False)
     ):
-        # 지난 틱으로부터 경과한 초를 누적 (오토리프레시가 1초여도 지연 대비 안전)
         dt = int(max(0, _now - st.session_state.last_study_tick_ts))
         st.session_state.total_study_sec += dt
 
-    # 마지막 틱 갱신
     st.session_state.last_study_tick_ts = _now
 
-    # ✅ 25분 종료 → 5분 휴식 시작 알림 (화려한 중앙 오버레이)
-    # ✅ 25분 종료 → 5분 휴식 시작 알림 (화려한 중앙 오버레이)
     if st.session_state.get("show_break_alert", False):
         st.markdown("""
         <style>
@@ -652,7 +695,6 @@ with col3:
         """, unsafe_allow_html=True)
         st.session_state.show_break_alert = False
 
-    # ✅ 5분 휴식 종료 → 공부 시작 알림 (화려한 중앙 오버레이)
     if st.session_state.get("show_start_alert", False):
         st.markdown("""
         <style>
@@ -670,7 +712,6 @@ with col3:
         }
         .study-alert-title{ font-weight: 900; font-size: 20px; letter-spacing: .2px; display: flex; align-items: center; gap: 8px; }
         .study-alert-sub{ font-size: 14px; opacity: .95; margin-top: 4px; }
-
         @keyframes slideDown2 { from{ transform: translateY(-18px); opacity: 0 } to{ transform: translateY(0); opacity: 1 } }
         @keyframes fadeOut2   { to{ opacity: 0; transform: translateY(-12px) } }
         </style>
@@ -682,7 +723,6 @@ with col3:
         </div>
         """, unsafe_allow_html=True)
         st.session_state.show_start_alert = False
-
 
     st.markdown(
         f'''
@@ -696,21 +736,13 @@ with col3:
         unsafe_allow_html=True
     )
 
-    # 진행률 표시
-    st.progress(
-        ratio
-    )
+    st.progress(ratio)
 
-    # soft-bg 닫기
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
 
-
-    # [UI] 헤더 뒤 연한 흰 배경 + 둥근 모서리 (집중도 섹션)
     st.markdown('<div class="soft-bg" style="margin-bottom:10px;"><div class="badge-head alt">🧠 집중도</div></div>', unsafe_allow_html=True)
-
-    # 콜백→UI 전달값 반영
 
     st.session_state.focus_score = int(A.get("latest_attention", st.session_state.get("focus_score", 100)))
     if A.get("fatigue_bump", 0) > 0:
@@ -723,23 +755,20 @@ with col3:
         unsafe_allow_html=True
     )
 
-    # ↓↓↓ 추가: 집중도 ≤80 지속 시 5분 휴식 모달/알림
     ss = st.session_state
     ss.setdefault("low_focus_since", None)
     ss.setdefault("rest_prompt_active", False)
     ss.setdefault("rest_cooldown_ts", 0.0)
 
     _now = time.time()
-    _low_focus_threshold = 80             # 임계값
-    _low_focus_sustain_sec = 5            # 이 시간(초) 이상 연속으로 80 이하일 때만 알림
-    _low_focus_cooldown_sec = 180         # '계속 공부' 선택 시 재알림까지 대기시간(초)
-    
-        # 포매팅
+    _low_focus_threshold = 80
+    _low_focus_sustain_sec = 5
+    _low_focus_cooldown_sec = 180
+
     _h = int(st.session_state.total_study_sec // 3600)
     _m = int((st.session_state.total_study_sec % 3600) // 60)
     _s = int(st.session_state.total_study_sec % 60)
 
-    # 👇 한켠에 들어가는 작은 카드(soft-bg)
     st.markdown(
         f"""
         <div class="soft-bg" style="padding:12px 14px; margin-top:10px;">
@@ -750,30 +779,26 @@ with col3:
         unsafe_allow_html=True
     )
 
-
 # ↓↓↓ 집중도 감지 + 모달 트리거(그대로 유지)
 if not ss.get("break_active", False) and not ss.get("ended", False):
     if not ss.get("rest_prompt_active", False):
         if ss.focus_score <= _low_focus_threshold:
-            # 최초 진입 시간 기록
             if ss.low_focus_since is None:
                 ss.low_focus_since = _now
-            # 지속 + 쿨다운 충족 시 모달 띄우기
             elif (_now - ss.low_focus_since >= _low_focus_sustain_sec) and (_now >= ss.rest_cooldown_ts):
                 ss.rest_prompt_active = True
                 ss.low_focus_since = None
-                # 간단 토스트(구버전 호환)
-                try:
+            try:
+                if ss.rest_prompt_active:
                     st.toast("⚠️ 집중도가 80 이하입니다. 5분 휴식을 시작할까요?")
-                except Exception:
+            except Exception:
+                if ss.rest_prompt_active:
                     st.warning("⚠️ 집중도가 80 이하입니다. 5분 휴식을 시작할까요?")
         else:
-            # 회복되면 타이머 초기화
             ss.low_focus_since = None
 
-# ↓↓↓ 모달만 사용(폴백 UI 제거) — 오른쪽 박스 더 이상 생성 안 됨
 if ss.get("rest_prompt_active", False):
-    if hasattr(st, "dialog"):  # 최신 버전
+    if hasattr(st, "dialog"):
         @st.dialog("집중도 낮음 • 5분 휴식할까요?")
         def __low_focus_dialog():
             st.markdown(
@@ -792,8 +817,7 @@ if ss.get("rest_prompt_active", False):
                     ss.rest_cooldown_ts = time.time() + _low_focus_cooldown_sec
             st.caption("팁: 충분히 피곤하면 짧은 휴식이 전체 공부 효율을 높여줘요. (다음 알림은 3분 후)")
         __low_focus_dialog()
-
-    elif hasattr(st, "experimental_dialog"):  # 조금 예전 버전
+    elif hasattr(st, "experimental_dialog"):
         @st.experimental_dialog("집중도 낮음 • 5분 휴식할까요?")
         def __low_focus_dialog():
             st.markdown(
@@ -813,33 +837,17 @@ if ss.get("rest_prompt_active", False):
             st.caption("팁: 충분히 피곤하면 짧은 휴식이 전체 공부 효율을 높여줘요. (다음 알림은 3분 후)")
         __low_focus_dialog()
 
-    # else:  # 폴백 UI 없음(인라인 박스 제거)
-
-    # (기존) 피로 누적 경고는 유지
     if st.session_state.fatigue_count >= 5:
         st.markdown(
             '<div style="color:#ff6b6b; font-weight:700; margin-top:10px;">⚠️ 졸음/하품이 반복적으로 감지되고 있어요! 잠시 쉬어보는 건 어떨까요?</div>',
             unsafe_allow_html=True
         )
 
+if "last_study_tick_ts" not in st.session_state:
+    st.session_state.last_study_tick_ts = _now
 
-# _now = time.time()
-# if (
-#     st.session_state.get("start_camera", False)
-#     and st.session_state.get("cam_active", False)
-#     and not st.session_state.get("break_active", False)
-#     and not st.session_state.get("ended", False)
-#     and st.session_state.get("pomodoro_mode") == "공부 중"
-# ):
-    # 초기화 보강 (없으면 세팅)
-    if "last_study_tick_ts" not in st.session_state:
-        st.session_state.last_study_tick_ts = _now
-
-    # 지난 틱 이후 실제 경과 초만큼 누적
-    dt = int(max(0, _now - st.session_state.last_study_tick_ts))
-    st.session_state.total_study_sec += dt
-
-# 마지막 틱 갱신(공부/휴식 여부 무관)
+dt = int(max(0, _now - st.session_state.last_study_tick_ts))
+st.session_state.total_study_sec += dt
 st.session_state.last_study_tick_ts = _now
 
 remaining = max(0, int(st.session_state.pomodoro_duration - (time.time() - st.session_state.pomodoro_start)))
