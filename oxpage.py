@@ -1,109 +1,73 @@
-# wrongbook_ui.py
-# 오답 노트 (OCR 퀴즈 피드백) UI - 날짜별 열람/검색/편집/삭제/즐겨찾기/복습완료
+# memo_folder_ui.py
+# 메모장 폴더 (메모 JSON 저장 + user_data.json 자동 저장)
 import streamlit as st
 import datetime as dt
 import uuid
-import json, os, tempfile, shutil
+import os, json, tempfile, shutil
 
 st.set_page_config(
-    page_title="오답 노트 (OCR 퀴즈)",
+    page_title="메모장 폴더 (JSON 저장 + user_data 자동 저장)",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-# ========================= 상단바 제거 & 스타일 =========================
+# ================= CSS =================
 st.markdown("""
 <style>
-/* 0) 페이지/루트 여백 완전 제거 */
-html, body { margin:0 !important; padding:0 !important; }
-main.stApp{ padding-top:0 !important; }
-
-/* 0.5) 사이드바 완전 숨김 + 좌측 여백 제거 */
-section[data-testid="stSidebar"]{ display:none !important; }
-div[data-testid="stSidebar"]{ display:none !important; }
-div[data-testid="stSidebarContent"]{ display:none !important; }
-[data-testid="stAppViewContainer"]{ padding-left:0 !important; }
-
-/* 1) Streamlit 기본 UI 숨김 */
-header[data-testid="stHeader"]{ display:none !important; }
-div[data-testid="stToolbar"]{ display:none !important; }
-div[data-testid="stDecoration"]{ display:none !important; }
-div[data-testid="stStatusWidget"]{ display:none !important; }
+/* 기본 상단 UI 제거 */
+header[data-testid="stHeader"], div[data-testid="stToolbar"],
+div[data-testid="stDecoration"], div[data-testid="stStatusWidget"]{ display:none !important; }
 #MainMenu, footer{ visibility:hidden !important; }
 
-/* 2) 컨테이너 상단 패딩 0 */
-[data-testid="stAppViewContainer"]{ padding-top:0 !important; }
-div[data-testid="block-container"],
-div[class*="block-container"]{ padding-top:0 !important; padding-bottom:12px !important; }
+/* 사이드바 숨김 + 여백 제거 */
+section[data-testid="stSidebar"], div[data-testid="stSidebar"],
+div[data-testid="stSidebarContent"]{ display:none !important; }
+main[data-testid="stAppViewContainer"]{ padding-left:0 !important; padding-top:0 !important; }
+div[data-testid="block-container"]{ padding-top:0 !important; padding-bottom:16px !important; }
 
-/* 3) 첫 요소 margin-top 0 (margin-collapsing 방지) */
-div[data-testid="block-container"] > div:first-child{ margin-top:0 !important; padding-top:0 !important; }
-h1,h2,h3,h4,h5,h6{ margin-top:0 !important; }
-
-/* 공통 컨테이너: 상단 패딩 0으로 더 붙임 */
-.container{ max-width:1200px; margin:0 auto; padding:0 40px 8px; }
-
-/* 메인헤더(오렌지 그라데이션 바) - 상단 여백 제거 */
-.panel-head{
-  margin-top:0;
-  border-radius:18px;
+/* 공용 레이아웃 */
+.container {max-width:1200px; margin:0 auto; padding:0 24px 16px;}
+.section-title{
+  margin:4px 0 6px 0; padding:12px 14px; border-radius:14px;
   background:linear-gradient(90deg,#FF9330 0%,#FF7A00 100%);
-  color:#fff;
-  font-size:28px; font-weight:900; text-align:center;
-  padding:16px 20px;
-  box-shadow:0 8px 18px rgba(0,0,0,.06);
+  color:#fff; text-align:center; font-weight:900; font-size:30px;
+  box-shadow:0 6px 14px rgba(0,0,0,.06);
 }
-
-/* 통계칩 / 툴바: 위쪽 마진 최소화 */
-.statbar{display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 8px 0;}
-.statchip{
-  background:#FFFFFF; border-radius:12px; padding:8px 10px;
-  box-shadow:0 2px 10px rgba(0,0,0,.06); border:1px solid rgba(0,0,0,.06);
-  font-weight:800; font-size:14px;
+.note-card{
+  background:#fff; border-radius:14px; padding:14px 16px;
+  box-shadow:0 6px 14px rgba(0,0,0,.06); margin-bottom:10px;
 }
-.toolbar{display:flex; gap:10px; align-items:end; flex-wrap:wrap; margin:0 0 6px 0;}
-label{ font-size:0.92rem !important; margin-bottom:2px !important; }
+.stTextArea textarea{line-height:1.5}
 
-/* 칩 */
-.pill{display:inline-block; padding:6px 10px; border-radius:999px; background:#F6F7F9; font-size:12px; color:#555; margin-right:6px;}
-.pill.src{background:#eef3ff; color:#1b3c8c;}
-
-/* 카드 */
-.card{
-  background:#FFFFFF; border-radius:16px; padding:14px 16px;
-  box-shadow:0 8px 18px rgba(0,0,0,.06); margin-bottom:10px; border:1px solid rgba(0,0,0,.06);
+/* 저장폴더 이동 버튼 */
+#go-folder-bottom + div button{
+  background:#fff !important; color:#111 !important;
+  border:1px solid rgba(0,0,0,.12) !important; padding:4px 10px !important;
+  font-size:14px !important; border-radius:10px !important; box-shadow:0 1px 2px rgba(0,0,0,.04);
 }
-.card-header{display:flex; justify-content:space-between; align-items:center; gap:8px;}
-.card-title{font-weight:800; font-size:16px; margin-bottom:6px;}
-.card-meta{font-size:12px; color:#666;}
+#go-folder-bottom + div button:hover{ border-color:rgba(0,0,0,.2) !important; }
 
-/* 답변 박스 */
-.answer-row{display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap}
-.answer-box{ flex:1 1 280px; border-radius:12px; padding:10px 12px; border:1px solid #eee; background:#fafafa; }
-.answer-good{ border-color:#d4f5d4; background:#f6fff6; }
-.answer-bad{  border-color:#ffd6d6; background:#fff6f6; }
-
-/* 이미지 */
-img.qimg{border-radius:12px; border:1px solid rgba(0,0,0,.06); max-height:240px; object-fit:contain}
-
-/* 저장폴더 이동 버튼(헤더 왼쪽 밑) 스타일 */
-#go-folder-left + div button{
-  background:#fff !important;
-  color:#111 !important;
-  border:1px solid rgba(0,0,0,.12) !important;
-  padding:4px 10px !important;
-  font-size:14px !important;
-  border-radius:10px !important;
-  box-shadow:0 1px 2px rgba(0,0,0,.04) !important;
+/* -------- 검색 줄: 입력/버튼/날짜 크기 & 정렬 완전 일치 -------- */
+.row-label{ font-size:0.92rem; font-weight:600; margin:0 0 6px 0; color:#344054; }
+:root{ --search-h:44px; --search-r:12px; --search-pad-x:14px; }
+#search-input-anchor + div input,
+#date-input-anchor + div input{
+  height:var(--search-h) !important; border-radius:var(--search-r) !important;
+  padding:0 var(--search-pad-x) !important; box-sizing:border-box !important;
 }
-#go-folder-left + div button:hover{
-  border-color:rgba(0,0,0,.2) !important;
+#search-btn-anchor + div button{
+  height:var(--search-h) !important; border-radius:var(--search-r) !important;
+  padding:0 var(--search-pad-x) !important; font-weight:800 !important; margin-top:0 !important; width:100% !important;
 }
+div[data-testid="column"] > div:has(#search-input-anchor),
+div[data-testid="column"] > div:has(#search-btn-anchor),
+div[data-testid="column"] > div:has(#date-input-anchor){ margin-bottom:0 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ========================= 저장/로드 유틸 =========================
-WRONGBOOK_PATH = os.path.join("data", "wrongbook.json")
+# ================= 경로/저장 유틸 =================
+PROJECT_FOLDER_NAME = "AI_final_project"
+NOTES_JSON_PATH = os.path.join("data", "memo_notes.json")
 
 def _ensure_parent_dir(path: str):
     parent = os.path.dirname(path)
@@ -115,304 +79,238 @@ def _atomic_write_json(path: str, data: dict):
     with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8", suffix=".json") as tmp:
         json.dump(data, tmp, ensure_ascii=False, indent=2)
         tmp_path = tmp.name
-    os.replace(tmp_path, path)
+    shutil.move(tmp_path, path)
 
-def load_wrongbook() -> dict:
-    if os.path.exists(WRONGBOOK_PATH):
+def _resolve_user_data_path() -> str:
+    cwd = os.path.abspath(os.getcwd())
+    if os.path.basename(cwd) == PROJECT_FOLDER_NAME:
+        return os.path.join(cwd, "user_data.json")
+    cur = cwd
+    while True:
+        candidate = os.path.join(cur, PROJECT_FOLDER_NAME)
+        if os.path.isdir(candidate):
+            return os.path.join(candidate, "user_data.json")
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    return os.path.join(cwd, PROJECT_FOLDER_NAME, "user_data.json")
+
+USER_DATA_PATH = _resolve_user_data_path()
+
+def load_notes() -> dict:
+    if os.path.exists(NOTES_JSON_PATH):
         try:
-            with open(WRONGBOOK_PATH, "r", encoding="utf-8") as f:
+            with open(NOTES_JSON_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, dict):
-                    for d, lst in data.items():
-                        for it in lst:
-                            it.setdefault("bookmarked", False)
-                            it.setdefault("reviewed", False)
-                    return data
+                    return {str(k): list(v) for k, v in data.items()}
         except Exception:
             pass
     today = dt.date.today().strftime("%Y-%m-%d")
     yday  = (dt.date.today() - dt.timedelta(days=1)).strftime("%Y-%m-%d")
     return {
         today: [
-            {
-                "id": str(uuid.uuid4()),
-                "quiz_id": "OCR-2025-0819-01",
-                "question": "다음 중 광합성에 직접 사용되지 않는 것은?",
-                "my_answer": "산소",
-                "correct_answer": "이산화탄소",
-                "explanation": "광합성은 이산화탄소와 물을 이용해 포도당과 산소를 만든다.",
-                "image": None,
-                "source": "OCR",
-                "page": 3,
-                "reviewed": False,
-                "bookmarked": False,
-                "created_at": dt.datetime.now().isoformat(timespec="seconds"),
-                "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
-            }
+            {"id": str(uuid.uuid4()), "title": "할 일 점검",
+             "content": "- 모델 학습 로그 정리\n- 팀 회의 안건 준비", "updated": "오늘"},
+            {"id": str(uuid.uuid4()), "title": "아이디어 스케치",
+             "content": "집중도 차트 툴팁 개선 메모", "updated": "오늘"},
         ],
         yday: [
-            {
-                "id": str(uuid.uuid4()),
-                "quiz_id": "OCR-2025-0818-02",
-                "question": "삼각형의 내각의 합은?",
-                "my_answer": "360°",
-                "correct_answer": "180°",
-                "explanation": "모든 삼각형의 내각의 합은 180°이다.",
-                "image": None,
-                "source": "OCR",
-                "page": 12,
-                "reviewed": True,
-                "bookmarked": True,
-                "created_at": dt.datetime.now().isoformat(timespec="seconds"),
-                "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
-            }
+            {"id": str(uuid.uuid4()), "title": "회의 메모",
+             "content": "UI 색상 팔레트 확정. 버튼 라운드 14px.", "updated": "어제"},
         ],
     }
 
-def save_wrongbook(data: dict):
-    _atomic_write_json(WRONGBOOK_PATH, data)
+def save_notes(data: dict):
+    _atomic_write_json(NOTES_JSON_PATH, data)
 
-# ========================= 세션 상태 =========================
-if "wrongbook" not in st.session_state:
-    st.session_state.wrongbook = load_wrongbook()
-if "wb_edit" not in st.session_state:
-    st.session_state.wb_edit = {}  # {id: bool}
-wb = st.session_state.wrongbook
+USER_DATA_DEFAULT = {
+    "todo": "", "memo": "", "study_hour": 0, "study_minute": 0,
+    "dark_mode": False, "active_char": "rabbit", "owned_hats": [],
+    "equipped_hat": None, "todo_items": [], "nickname": "-", "coins": 0, "mode": "ranking",
+}
 
-# ========================= 메인헤더 =========================
-st.markdown("""
-<div class="container">
-  <div class="panel-head">오답 폴더</div>
-</div>
-""", unsafe_allow_html=True)
-
-# ========================= 헤더 아래 왼쪽: "저장폴더로 이동" 버튼 =========================
-st.markdown("<div class='container'>", unsafe_allow_html=True)
-row_left, _ = st.columns([1, 6])
-with row_left:
-    # 이 마커 바로 다음 생성되는 첫 버튼을 CSS로 스타일링
-    st.markdown('<div id="go-folder-left"></div>', unsafe_allow_html=True)
-    if st.button("저장폴더로 이동", key="go-folder", type="secondary"):
+def load_user_data() -> dict:
+    path = USER_DATA_PATH
+    if os.path.exists(path):
         try:
-            st.switch_page("pages/folder_page.py")
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    merged = {**USER_DATA_DEFAULT, **data}
+                    if not isinstance(merged.get("todo_items"), list):
+                        merged["todo_items"] = []
+                    return merged
         except Exception:
             pass
+    return USER_DATA_DEFAULT.copy()
 
-# ========================= 본문 (컨테이너 계속) =========================
+def save_user_data(data: dict):
+    merged = {**USER_DATA_DEFAULT, **(data or {})}
+    _atomic_write_json(USER_DATA_PATH, merged)
 
-# ---- 통계칩
-all_items = [(d, it) for d, lst in wb.items() for it in lst]
-today_str = dt.date.today().strftime("%Y-%m-%d")
-this_week = dt.date.today().isocalendar().week
-cnt_total = len(all_items)
-cnt_today = sum(1 for d,_ in all_items if d == today_str)
-cnt_week  = sum(1 for d,_ in all_items if dt.date(*map(int, d.split("-"))).isocalendar().week == this_week)
-cnt_star  = sum(1 for _,it in all_items if it.get("bookmarked"))
+# ================= 페이지 시작 =================
+st.markdown('<div class="container">', unsafe_allow_html=True)
 
-st.markdown("<div class='statbar'>", unsafe_allow_html=True)
-c1, c2, c3, c4 = st.columns(4)
-with c1: st.markdown(f'<div class="statchip">총 오답: {cnt_total}</div>', unsafe_allow_html=True)
-with c2: st.markdown(f'<div class="statchip">오늘: {cnt_today}</div>', unsafe_allow_html=True)
-with c3: st.markdown(f'<div class="statchip">이번 주: {cnt_week}</div>', unsafe_allow_html=True)
-with c4: st.markdown(f'<div class="statchip">즐겨찾기: {cnt_star}</div>', unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+# --- 타이틀 ---
+st.markdown('<div class="section-title">메모장 폴더</div>', unsafe_allow_html=True)
 
-# ---- 툴바(검색/날짜: 캘린더)
-st.markdown("<div class='toolbar'>", unsafe_allow_html=True)
-t1, t2 = st.columns([2,1])
-with t1:
-    q = st.text_input("제목/내용 검색", placeholder="키워드…")
-with t2:
-    sel_date = st.date_input("날짜 선택", value=dt.date.today(), format="YYYY-MM-DD")
-    sel_date_str = sel_date.strftime("%Y-%m-%d") if isinstance(sel_date, dt.date) else str(sel_date)
-st.markdown("</div>", unsafe_allow_html=True)
+# --- 헤더 아래 오른쪽: "저장폴더로 이동" 버튼 ---
+row_left, row_right = st.columns([6, 1])
+with row_right:
+    st.markdown('<div id="go-folder-bottom"></div>', unsafe_allow_html=True)
+if st.button("저장폴더로 이동", key="go-folder", type="secondary"):
+    try:
+        st.switch_page("pages/folder_page.py")
+    except Exception:
+        pass
 
-st.divider()
+# ================= 상태 =================
+if "ui_notes" not in st.session_state:
+    st.session_state.ui_notes = load_notes()
+if "user_data" not in st.session_state:
+    st.session_state.user_data = load_user_data()
+if "edit_mode" not in st.session_state:
+    st.session_state.edit_mode = {}
+if "q_committed" not in st.session_state:
+    st.session_state.q_committed = ""
+if "sel_date_committed" not in st.session_state:
+    st.session_state.sel_date_committed = None
 
-# ========================= 데이터 필터링 =========================
-def match_filter(date_key, it):
-    if date_key != sel_date_str:
-        return False
-    if q:
-        qq = q.lower()
-        blob = " ".join([
-            it.get("question",""), it.get("my_answer",""), it.get("correct_answer",""),
-            it.get("explanation","")
-        ]).lower()
-        if qq not in blob:
-            return False
-    return True
+notes_by_date = st.session_state.ui_notes
+user_data     = st.session_state.user_data
 
-# 선택 날짜의 아이템(오답 먼저 정렬)
-filtered = []
-for d in sorted(wb.keys(), reverse=True):
-    for it in sorted(
-        wb[d],
-        key=lambda x: (x.get("my_answer")==x.get("correct_answer"), x.get("updated_at","")),
-        reverse=False
-    ):
-        if match_filter(d, it):
-            filtered.append((d, it))
+# ================= 레이아웃 =================
+left, right = st.columns([1, 2], gap="large")
 
-# ========================= 액션 유틸 =========================
-def _save_and_rerun():
-    save_wrongbook(wb)
-    st.rerun()
+with left:
+    st.subheader("✍️ 새 메모")
 
-def toggle_bookmark(date_key, item_id):
-    for it in wb.get(date_key, []):
-        if it["id"] == item_id:
-            it["bookmarked"] = not it.get("bookmarked", False)
-            it["updated_at"] = dt.datetime.now().isoformat(timespec="seconds")
-            break
-    _save_and_rerun()
+    # ✅ 폼으로 감싸고 clear_on_submit=True → 제출 후 자동으로 입력값 초기화
+    with st.form("new_memo", clear_on_submit=True):
+        pick_date = st.date_input("날짜", value=dt.date.today(), format="YYYY-MM-DD", key="new_date")
+        title = st.text_input("제목", placeholder="예) 오늘 회의 메모", key="new_title")
+        content = st.text_area("내용", height=160, placeholder="내용을 입력하세요…", key="new_content")
 
-def toggle_reviewed(date_key, item_id, val: bool):
-    for it in wb.get(date_key, []):
-        if it["id"] == item_id:
-            it["reviewed"] = bool(val)
-            it["updated_at"] = dt.datetime.now().isoformat(timespec="seconds")
-            break
-    save_wrongbook(wb)
+        submitted = st.form_submit_button("추가", type="primary", use_container_width=True)
 
-def delete_item(date_key, item_id):
-    wb[date_key] = [x for x in wb.get(date_key, []) if x["id"] != item_id]
-    if not wb[date_key]:
-        del wb[date_key]
-    _save_and_rerun()
-
-# ========================= 카드 렌더러 =========================
-def render_card(date_key, it):
-    iid = it["id"]
-    is_edit = st.session_state.wb_edit.get(iid, False)
-
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-
-    # 헤더 라인: 칩 + 메타 + 즐겨찾기
-    h1, h2, h3 = st.columns([5, 2, 1])
-    with h1:
-        chips = [f"<span class='pill'>{date_key}</span>"]
-        if it.get("source"): chips.append(f"<span class='pill src'>{it.get('source')}</span>")
-        if it.get("page") is not None: chips.append(f"<span class='pill'>p.{it.get('page')}</span>")
-        st.markdown(" ".join(chips), unsafe_allow_html=True)
-    with h2:
-        st.caption(f"ID: {it.get('quiz_id','-')}")
-        st.caption(f"업데이트: {it.get('updated_at','-')}")
-    with h3:
-        star = "★" if it.get("bookmarked") else "☆"
-        if st.button(star, key=f"star-{iid}", help="즐겨찾기", use_container_width=True):
-            toggle_bookmark(date_key, iid)
-
-    st.markdown("---")
-
-    if is_edit:
-        et_q = st.text_area("문제", value=it.get("question",""), key=f"q-{iid}")
-        c1, c2 = st.columns(2)
-        with c1:
-            et_my = st.text_input("내 답", value=it.get("my_answer",""), key=f"my-{iid}")
-            et_src = st.text_input("출처(예: OCR/교재명)", value=it.get("source",""), key=f"src-{iid}")
-        with c2:
-            et_cor = st.text_input("정답", value=it.get("correct_answer",""), key=f"cor-{iid}")
-            et_page = st.number_input("페이지(옵션)", min_value=0, value=int(it.get("page") or 0), key=f"page-{iid}")
-        et_exp = st.text_area("피드백(해설)", value=it.get("explanation",""), key=f"exp-{iid}")
-        et_img = st.text_input("이미지 경로/URL(옵션)", value=it.get("image") or "", key=f"img-{iid}")
-
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("저장", key=f"save-{iid}", type="primary", use_container_width=True):
-                it.update({
-                    "question": et_q, "my_answer": et_my, "correct_answer": et_cor,
-                    "explanation": et_exp, "image": et_img or None,
-                    "source": et_src, "page": int(et_page) if et_page else None,
-                    "updated_at": dt.datetime.now().isoformat(timespec="seconds")
+        if submitted:
+            if (title or "").strip() or (content or "").strip():
+                key = pick_date.strftime("%Y-%m-%d")
+                notes_by_date.setdefault(key, []).append({
+                    "id": str(uuid.uuid4()),
+                    "title": (title or "").strip() or "제목 없음",
+                    "content": (content or "").strip(),
+                    "updated": "방금",
                 })
-                st.session_state.wb_edit[iid] = False
-                _save_and_rerun()
-        with b2:
-            if st.button("취소", key=f"cancel-{iid}", use_container_width=True):
-                st.session_state.wb_edit[iid] = False
+                save_notes(notes_by_date)
+                user_data["memo"] = f"{(title or '').strip()}\n{(content or '').strip()}".strip()
+                save_user_data(user_data)
+                st.success("추가되었습니다. (메모/유저 데이터 저장 완료)")
                 st.rerun()
+            else:
+                st.warning("제목 또는 내용을 입력하세요.")
+
+with right:
+    st.subheader("📅 날짜별 메모")
+
+    # 캘린더 범위
+    if notes_by_date:
+        date_keys = sorted([dt.datetime.strptime(k, "%Y-%m-%d").date() for k in notes_by_date], reverse=True)
+        min_date = min(date_keys); max_date = max(date_keys)
+        default_date = st.session_state.sel_date_committed or date_keys[0]
     else:
-        # 문제
-        st.markdown(f"<div class='card-title'>📝 문제</div>", unsafe_allow_html=True)
-        st.markdown(f"{it.get('question','(문항 없음)')}", unsafe_allow_html=True)
+        date_keys = []; min_date = max_date = default_date = dt.date.today()
 
-        # 이미지(있을 때만)
-        if it.get("image"):
-            st.image(it["image"], use_column_width=False, caption="문항 이미지", output_format="auto")
+    # ===== 검색줄 (입력/버튼/날짜) =====
+    with st.form("memo_search", clear_on_submit=False):
+        col_text, col_btn, col_date = st.columns([7, 1.2, 3])
 
-        # 정답/내 답
-        st.markdown("<div class='answer-row'>", unsafe_allow_html=True)
-        my_ok = it.get("my_answer") == it.get("correct_answer")
-        cls_my = "answer-box answer-good" if my_ok else "answer-box answer-bad"
-        with st.container():
-            cA, cB = st.columns(2)
-            with cA:
-                st.markdown(f"<div class='{cls_my}'><b>내 답</b><br>{it.get('my_answer','')}</div>", unsafe_allow_html=True)
-            with cB:
-                st.markdown(f"<div class='answer-box'><b>정답</b><br>{it.get('correct_answer','')}</div>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+        with col_text:
+            st.markdown('<div class="row-label">제목/내용 검색</div>', unsafe_allow_html=True)
+            st.markdown('<div id="search-input-anchor"></div>', unsafe_allow_html=True)
+            q_input = st.text_input("", placeholder="키워드를 입력하세요…",
+                                    key="q_input", label_visibility="collapsed")
 
-        # 피드백(해설) 항상 보이기
-        st.markdown(f"<div class='answer-box' style='margin-top:8px'><b>피드백</b><br>{it.get('explanation','')}</div>", unsafe_allow_html=True)
+        with col_btn:
+            st.markdown('<div class="row-label">&nbsp;</div>', unsafe_allow_html=True)
+            st.markdown('<div id="search-btn-anchor"></div>', unsafe_allow_html=True)
+            do_search = st.form_submit_button("검색", use_container_width=True)
 
-        # 액션
-        k1, k2, k3, _ = st.columns([1,1,1,3])
-        with k1:
-            if st.button("✏️ 편집", key=f"edit-{iid}", use_container_width=True):
-                st.session_state.wb_edit[iid] = True
-                st.rerun()
-        with k2:
-            if st.button("🗑 삭제", key=f"del-{iid}", use_container_width=True):
-                delete_item(date_key, iid)
-        with k3:
-            reviewed = st.checkbox("복습 완료", value=bool(it.get("reviewed")), key=f"rev-{iid}")
-            toggle_reviewed(date_key, iid, reviewed)
+        with col_date:
+            st.markdown('<div class="row-label">날짜 선택</div>', unsafe_allow_html=True)
+            st.markdown('<div id="date-input-anchor"></div>', unsafe_allow_html=True)
+            sel_date_widget = st.date_input("",
+                                            value=default_date,
+                                            min_value=min_date,
+                                            max_value=max_date,
+                                            format="YYYY-MM-DD",
+                                            key="date_input",
+                                            label_visibility="collapsed")
 
-    st.markdown("</div>", unsafe_allow_html=True)
+        if do_search:
+            st.session_state.q_committed = q_input
+            st.session_state.sel_date_committed = sel_date_widget
 
-# ========================= 출력 =========================
-st.markdown(f"### {sel_date_str}")
-if not filtered:
-    st.info("이 날짜에는 오답이 없습니다. 아래에서 새 오답을 추가해 보세요.")
-else:
-    for d, it in filtered:
-        render_card(d, it)
+    # 제출값 우선
+    q = st.session_state.q_committed or st.session_state.get("q_input", "")
+    sel_date = st.session_state.sel_date_committed or st.session_state.get("date_input", default_date)
+    sel_key = sel_date.strftime("%Y-%m-%d")
 
-# ========================= 수동 입력(간소화) =========================
-st.divider()
-with st.expander("➕ 오답 추가"):
-    c1, c2 = st.columns([2,1])
-    with c1:
-        new_date = st.date_input("날짜", value=dt.date.today())
-        new_question = st.text_area("문제", placeholder="문항 텍스트")
-        new_expl = st.text_area("피드백(해설)", placeholder="왜 틀렸는지, 정리")
-    with c2:
-        new_my = st.text_input("내 답")
-        new_cor = st.text_input("정답")
+    # 데이터 필터
+    day_notes = notes_by_date.get(sel_key, [])
+    if q:
+        ql = q.lower()
+        day_notes = [n for n in day_notes
+                     if ql in n.get("title","").lower() or ql in n.get("content","").lower()]
 
-    if st.button("추가 저장", type="primary"):
-        key = new_date.strftime("%Y-%m-%d")
-        item = {
-            "id": str(uuid.uuid4()),
-            "quiz_id": f"OCR-{key}-{str(uuid.uuid4())[:8]}",
-            "question": new_question.strip(),
-            "my_answer": new_my.strip(),
-            "correct_answer": new_cor.strip(),
-            "explanation": new_expl.strip(),
-            # page/source/image 필드 생성하지 않음
-            "reviewed": False,
-            "bookmarked": False,
-            "created_at": dt.datetime.now().isoformat(timespec="seconds"),
-            "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
-        }
-        if item["question"]:
-            st.session_state.wrongbook.setdefault(key, []).append(item)
-            save_wrongbook(st.session_state.wrongbook)  # 자동 저장
-            st.success("오답이 저장되었습니다.")
-            st.rerun()
-        else:
-            st.warning("문제 내용을 입력해 주세요.")
+    if not day_notes:
+        st.info("이 날짜에는 메모가 없습니다. 왼쪽에서 새 메모를 추가해 보세요.")
+    else:
+        for n in list(day_notes)[::-1]:
+            note_id = n["id"]
+            st.markdown('<div class="note-card">', unsafe_allow_html=True)
+            col_content, col_save, col_cancel = st.columns([4, 1, 1])
 
-# 컨테이너 닫기
+            if st.session_state.edit_mode.get(note_id, False):
+                with col_content:
+                    et = st.text_input("제목", value=n["title"], key=f"title-{note_id}")
+                    ec = st.text_area("내용", value=n["content"], height=150, key=f"content-{note_id}")
+                with col_save:
+                    if st.button("변경 적용", key=f"save-{note_id}", type="primary", use_container_width=True):
+                        n["title"] = (et or "제목 없음").strip()
+                        n["content"] = ec
+                        n["updated"] = "방금"
+                        save_notes(notes_by_date)
+                        user_data["memo"] = f"{n['title']}\n{n['content']}".strip()
+                        save_user_data(user_data)
+                        st.session_state.edit_mode[note_id] = False
+                        st.rerun()
+                with col_cancel:
+                    if st.button("취소", key=f"cancel-{note_id}", use_container_width=True):
+                        st.session_state.edit_mode[note_id] = False
+                        st.rerun()
+            else:
+                with col_content:
+                    st.markdown(f"**{n.get('title','제목 없음')}**")
+                    st.caption(f"마지막 수정: {n.get('updated','-')}")
+                    st.write(n.get("content") or " ")
+                with col_save:
+                    if st.button("✏️ 수정", key=f"edit-{note_id}", use_container_width=True):
+                        st.session_state.edit_mode[note_id] = True
+                        st.rerun()
+                with col_cancel:
+                    if st.button("🗑️ 삭제", key=f"del-{note_id}", use_container_width=True):
+                        notes_by_date[sel_key] = [x for x in notes_by_date.get(sel_key, []) if x["id"] != note_id]
+                        if not notes_by_date.get(sel_key):
+                            del notes_by_date[sel_key]
+                        save_notes(notes_by_date)
+                        st.rerun()
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
 st.markdown("</div>", unsafe_allow_html=True)
+
+# 마지막 저장
+save_user_data(st.session_state.user_data)

@@ -206,14 +206,14 @@ st.markdown(f"""
 
 # ================== 본문 ==================
 st.markdown('<div class="container">', unsafe_allow_html=True)
-st.markdown('<div class="panel">', unsafe_allow_html=True)        # 패널은 위치만 위로
+st.markdown('<div class="panel">', unsafe_allow_html=True)
 st.markdown('<div class="panel-head">저장 폴더</div>', unsafe_allow_html=True)
 st.markdown('<div class="panel-body">', unsafe_allow_html=True)
 
 folder_items = [
-    {"name": "필기 폴더", "img": "cute1.png"},
-    {"name": "오답 폴더", "img": "cute2.png"},
-    {"name": "메모장 폴더", "img": "cute3.png"},
+    {"name": "PDF 폴더", "img": "cute1.png", "link": "/pdf_folder"},
+    {"name": "오답 폴더", "img": "cute2.png", "link": "/wrong_folder"},
+    {"name": "메모장 폴더", "img": "cute3.png", "link": "/memo_folder"},
 ]
 cols = st.columns(3)
 
@@ -221,35 +221,28 @@ for i, (col, folder) in enumerate(zip(cols, folder_items)):
     with col:
         st.markdown('<div class="card">', unsafe_allow_html=True)
 
-        # 아이콘
+        # 아이콘 (링크 걸기)
         ipath = os.path.join(ASSETS_ROOT, folder["img"])
         if os.path.exists(ipath):
-            st.markdown(f"<div class='folder-icon'><img src='{_to_data_uri(ipath)}'/></div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<a href='{folder['link']}' target='_self'>"
+                f"<div class='folder-icon'><img src='{_to_data_uri(ipath)}'/></div>"
+                f"</a>",
+                unsafe_allow_html=True
+            )
         else:
-            st.markdown("<div class='folder-icon'>📁</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<a href='{folder['link']}' target='_self'><div class='folder-icon'>📁</div></a>",
+                unsafe_allow_html=True
+            )
 
-        # 제목
-        st.markdown(f"<div class='folder-title'>{folder['name']}</div>", unsafe_allow_html=True)
-
-        # 업로더
-        up_key = f"uploader_{i}"
-        st.markdown("<div class='upload-wrap'>", unsafe_allow_html=True)
-        up = st.file_uploader("", key=up_key, label_visibility="collapsed",
-                              accept_multiple_files=False, type=None)
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if up is not None:
-            st.caption(f"선택됨: **{up.name}**")
-
-        # 저장 버튼
-        st.markdown("<div class='save-row'><div class='save-btn'>", unsafe_allow_html=True)
-        if st.button("저장하기", key=f"save_{i}"):
-            if up is None:
-                st.warning("먼저 파일을 선택해 주세요.")
-            else:
-                dst = save_uploaded_file(folder["name"], up)
-                st.success(f"✅ 저장 완료!\n`{dst}`")
-        st.markdown("</div></div>", unsafe_allow_html=True)
+        # 제목 (링크 걸기)
+        st.markdown(
+            f"<a href='{folder['link']}' target='_self'>"
+            f"<div class='folder-title'>{folder['name']}</div>"
+            f"</a>",
+            unsafe_allow_html=True
+        )
 
         st.markdown("</div>", unsafe_allow_html=True)  # /card
 
