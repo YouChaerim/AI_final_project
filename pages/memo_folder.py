@@ -1,10 +1,9 @@
 # memo_folder_ui.py
-# 메모장 폴더 (메모 JSON 저장 + user_data.json 자동 저장) — 헤더 제거 + 경로 캡션 숨김 + 돌아가기 버튼(헤더 아래 우측)
+# 메모장 폴더 (메모 JSON 저장 + user_data.json 자동 저장)
 import streamlit as st
 import datetime as dt
 import uuid
-import urllib.parse
-import os, json, tempfile, shutil
+import os, json, tempfile, shutil, re
 
 st.set_page_config(
     page_title="메모장 폴더 (JSON 저장 + user_data 자동 저장)",
@@ -12,38 +11,24 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ================= CSS: 최상단 여백 & 사이드바 없애기 =================
+# ================= CSS =================
 st.markdown("""
 <style>
 /* 기본 상단 UI 제거 */
-header[data-testid="stHeader"]{ display:none !important; }
-div[data-testid="stToolbar"]{ display:none !important; }
-div[data-testid="stDecoration"]{ display:none !important; }
-div[data-testid="stStatusWidget"]{ display:none !important; }
+header[data-testid="stHeader"], div[data-testid="stToolbar"],
+div[data-testid="stDecoration"], div[data-testid="stStatusWidget"]{ display:none !important; }
 #MainMenu, footer{ visibility:hidden !important; }
 
-/* 사이드바 완전 숨김 */
-section[data-testid="stSidebar"]{ display:none !important; }
-div[data-testid="stSidebar"]{ display:none !important; }
+/* 사이드바 숨김 + 여백 제거 */
+section[data-testid="stSidebar"], div[data-testid="stSidebar"],
 div[data-testid="stSidebarContent"]{ display:none !important; }
-/* 사이드바 자리 여백 제거 (일부 버전 대응) */
-main[data-testid="stAppViewContainer"]{ padding-left:0 !important; }
-
-/* 페이지 상단 여백 제거 */
-html, body, .stApp{ margin:0 !important; padding:0 !important; }
-main[data-testid="stAppViewContainer"]{ padding-top:0 !important; }
-section.main > div.block-container{ padding-top:0 !important; }
+main[data-testid="stAppViewContainer"]{ padding-left:0 !important; padding-top:0 !important; }
 div[data-testid="block-container"]{ padding-top:0 !important; padding-bottom:16px !important; }
 
-div[data-testid="stVerticalBlock"] > div:first-child{ margin-top:0 !important; }
-h1,h2,h3,h4,h5,h6{ margin-top: 4px !important; margin-bottom: 8px !important; }
-p{ margin-top: 4px !important; margin-bottom: 8px !important; }
-
+/* 공용 레이아웃 */
 .container {max-width:1200px; margin:0 auto; padding:0 24px 16px;}
 .section-title{
-  margin:4px 0 6px 0;
-  padding:12px 14px;
-  border-radius:14px;
+  margin:4px 0 6px 0; padding:12px 14px; border-radius:14px;
   background:linear-gradient(90deg,#FF9330 0%,#FF7A00 100%);
   color:#fff; text-align:center; font-weight:900; font-size:30px;
   box-shadow:0 6px 14px rgba(0,0,0,.06);
@@ -53,37 +38,66 @@ p{ margin-top: 4px !important; margin-bottom: 8px !important; }
   box-shadow:0 6px 14px rgba(0,0,0,.06); margin-bottom:10px;
 }
 .stTextArea textarea{line-height:1.5}
-.small-muted{color:#777; font-size:12px;}
 
-/* --- 저장폴더 이동 버튼 전용 스타일 --- */
-#go-folder-bottom + div button {
-  background: #fff !important;
-  color: #111 !important;
-  border: 1px solid rgba(0,0,0,.12) !important;
-  padding: 4px 10px !important;
-  font-size: 14px !important;
-  border-radius: 10px !important;
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+/* 저장폴더 이동 버튼 */
+#go-folder-bottom + div button{
+  background:#fff !important; color:#111 !important;
+  border:1px solid rgba(0,0,0,.12) !important; padding:4px 10px !important;
+  font-size:14px !important; border-radius:10px !important; box-shadow:0 1px 2px rgba(0,0,0,.04);
 }
-#go-folder-bottom + div button:hover {
-  background: #fff !important;
-  border-color: rgba(0,0,0,.20) !important;
+#go-folder-bottom + div button:hover{ border-color:rgba(0,0,0,.2) !important; }
+
+/* -------- 검색 줄: 입력/버튼/날짜 크기 & 정렬 완전 일치 -------- */
+.row-label{ font-size:0.92rem; font-weight:600; margin:0 0 6px 0; color:#344054; }
+
+/* 원하는 공통 높이/라운드 한번에 조절 */
+:root{
+  --search-h: 44px;   /* ← 여기만 바꾸면 셋 다 같이 바뀜 */
+  --search-r: 12px;
+  --search-pad-x: 14px;
 }
 
-/* --- 🔎 검색 버튼(오른쪽) 라인 정렬 --- */
-#memo-search-btn + div button{
-  height:38px !important;           /* 입력창 높이에 맞춤 */
-  margin-top:26px !important;       /* 라벨 높이만큼 내려서 한 줄 정렬 */
-  padding:0 16px !important;
-  border-radius:10px !important;
-  border:1px solid rgba(0,0,0,.12) !important;
-  background:#fff !important;
-  color:#111 !important;
-  box-shadow:0 1px 2px rgba(0,0,0,.04) !important;
+/* 1) 검색 입력 */
+#search-input-anchor + div input{
+  height:var(--search-h) !important;
+  border-radius:var(--search-r) !important;
+  padding:0 var(--search-pad-x) !important;
+  box-sizing:border-box !important;
 }
-#memo-search-btn + div button:hover{
-  border-color:rgba(0,0,0,.2) !important;
+
+/* 2) 검색 버튼 */
+#search-btn-anchor + div button{
+  height:var(--search-h) !important;
+  border-radius:var(--search-r) !important;
+  padding:0 var(--search-pad-x) !important;
+  font-weight:800 !important;
+  margin-top:0 !important;
+  width:100% !important;
 }
+
+/* 3) 날짜 입력(단일 날짜) */
+#date-input-anchor + div input{
+  height:var(--search-h) !important;
+  border-radius:var(--search-r) !important;
+  padding:0 var(--search-pad-x) !important;
+  box-sizing:border-box !important;
+}
+
+/* 컬럼 사이 간격이 너무 넓게 보일 때 조금 조밀하게 */
+div[data-testid="column"] > div:has(#search-input-anchor),
+div[data-testid="column"] > div:has(#search-btn-anchor),
+div[data-testid="column"] > div:has(#date-input-anchor){
+  margin-bottom:0 !important;
+}
+
+/* 자동 반영 프리뷰 카드 */
+.preview-card{
+  background:#fff; border-radius:14px; padding:12px 14px;
+  box-shadow:0 6px 14px rgba(0,0,0,.06); margin:10px 0 14px;
+}
+.preview-card h4{ margin:0 0 8px 0; }
+.preview-todo{ margin:6px 0 0 0; padding-left:2px; }
+.preview-todo li{ margin:2px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -172,13 +186,42 @@ def save_user_data(data: dict):
     merged = {**USER_DATA_DEFAULT, **(data or {})}
     _atomic_write_json(USER_DATA_PATH, merged)
 
+# ================= 텍스트 → 오늘 할 일 파서 =================
+_BULLET_RE = re.compile(r"""^\s*(?:[-*•]\s+|\d+\.\s+|\[\s?\]\s*)?(?P<text>.+?)\s*$""")
+
+def _parse_todo_lines(text: str) -> list[str]:
+    if not text:
+        return []
+    lines = [ln.strip() for ln in text.splitlines()]
+    out = []
+    for ln in lines:
+        if not ln:
+            continue
+        m = _BULLET_RE.match(ln)
+        if m:
+            cleaned = m.group("text").strip()
+            if cleaned:
+                out.append(cleaned)
+    return out
+
+def _autosync_user_data_from_note(title: str, content: str):
+    """새 메모 추가/기존 메모 변경 시 user_data에 자동 반영."""
+    ud = st.session_state.user_data
+    ud["memo"] = f"{(title or '').strip()}\n{(content or '').strip()}".strip()
+
+    todos = _parse_todo_lines(content)
+    ud["todo_items"] = [{"id": str(uuid.uuid4()), "text": t, "done": False} for t in todos]
+    ud["todo"] = "\n".join([t["text"] for t in ud["todo_items"]])
+
+    save_user_data(ud)
+
 # ================= 페이지 시작 =================
 st.markdown('<div class="container">', unsafe_allow_html=True)
 
 # --- 타이틀 ---
 st.markdown('<div class="section-title">메모장 폴더</div>', unsafe_allow_html=True)
 
-# --- 헤더 바로 아래 오른쪽: "저장폴더로 이동" 버튼 ---
+# --- 헤더 아래 오른쪽: "저장폴더로 이동" 버튼 ---
 row_left, row_right = st.columns([6, 1])
 with row_right:
     st.markdown('<div id="go-folder-bottom"></div>', unsafe_allow_html=True)
@@ -188,19 +231,20 @@ if st.button("저장폴더로 이동", key="go-folder", type="secondary"):
     except Exception:
         pass
 
-# ================= 상태 초기화 =================
+# ================= 상태 =================
 if "ui_notes" not in st.session_state:
     st.session_state.ui_notes = load_notes()
 if "user_data" not in st.session_state:
     st.session_state.user_data = load_user_data()
 if "edit_mode" not in st.session_state:
     st.session_state.edit_mode = {}
+if "q_committed" not in st.session_state:
+    st.session_state.q_committed = ""
+if "sel_date_committed" not in st.session_state:
+    st.session_state.sel_date_committed = None
 
 notes_by_date = st.session_state.ui_notes
 user_data     = st.session_state.user_data
-
-def _save_user_data_from_state():
-    save_user_data(st.session_state.user_data)
 
 # ================= 레이아웃 =================
 left, right = st.columns([1, 2], gap="large")
@@ -214,16 +258,19 @@ with left:
     if st.button("추가", type="primary", use_container_width=True):
         if (title or "").strip() or (content or "").strip():
             key = pick_date.strftime("%Y-%m-%d")
-            notes_by_date.setdefault(key, []).append({
+            new_item = {
                 "id": str(uuid.uuid4()),
                 "title": (title or "").strip() or "제목 없음",
                 "content": (content or "").strip(),
                 "updated": "방금",
-            })
+            }
+            notes_by_date.setdefault(key, []).append(new_item)
             save_notes(notes_by_date)
-            user_data["memo"] = f"{(title or '').strip()}\n{(content or '').strip()}".strip()
-            save_user_data(user_data)
-            st.success("추가되었습니다. (메모/유저 데이터 저장 완료)")
+
+            # ✅ 자동 반영: 빠른 메모 / 오늘 할 일
+            _autosync_user_data_from_note(new_item["title"], new_item["content"])
+
+            st.success("추가되었습니다. (메모 및 오늘 할 일 자동 반영)")
             st.rerun()
         else:
             st.warning("제목 또는 내용을 입력하세요.")
@@ -231,28 +278,72 @@ with left:
 with right:
     st.subheader("📅 날짜별 메모")
 
-    # 🔎 검색 입력 + 버튼을 같은 줄에 배치
-    s1, s2 = st.columns([7, 1])
-    with s1:
-        q = st.text_input("제목/내용 검색", placeholder="키워드를 입력하세요…", key="search_q")
-    with s2:
-        st.markdown('<div id="memo-search-btn"></div>', unsafe_allow_html=True)
-        do_search = st.button("검색", key="memo-do-search")
+    # 캘린더 범위
+    if notes_by_date:
+        date_keys = sorted([dt.datetime.strptime(k, "%Y-%m-%d").date() for k in notes_by_date], reverse=True)
+        min_date = min(date_keys); max_date = max(date_keys)
+        default_date = st.session_state.sel_date_committed or date_keys[0]
+    else:
+        date_keys = []; min_date = max_date = default_date = dt.date.today()
+
+    # ===== 검색줄 (입력/버튼/날짜) =====
+    with st.form("memo_search", clear_on_submit=False):
+        col_text, col_btn, col_date = st.columns([7, 1.2, 3])
+
+        with col_text:
+            st.markdown('<div class="row-label">제목/내용 검색</div>', unsafe_allow_html=True)
+            st.markdown('<div id="search-input-anchor"></div>', unsafe_allow_html=True)
+            q_input = st.text_input("", placeholder="키워드를 입력하세요…",
+                                    key="q_input", label_visibility="collapsed")
+
+        with col_btn:
+            st.markdown('<div class="row-label">&nbsp;</div>', unsafe_allow_html=True)
+            st.markdown('<div id="search-btn-anchor"></div>', unsafe_allow_html=True)
+            do_search = st.form_submit_button("검색", use_container_width=True)
+
+        with col_date:
+            st.markdown('<div class="row-label">날짜 선택</div>', unsafe_allow_html=True)
+            st.markdown('<div id="date-input-anchor"></div>', unsafe_allow_html=True)
+            sel_date_widget = st.date_input("",
+                                            value=default_date,
+                                            min_value=min_date,
+                                            max_value=max_date,
+                                            format="YYYY-MM-DD",
+                                            key="date_input",
+                                            label_visibility="collapsed")
+
         if do_search:
-            st.rerun()
+            st.session_state.q_committed = q_input
+            st.session_state.sel_date_committed = sel_date_widget
 
-    all_dates = sorted(notes_by_date.keys(), reverse=True)
-    sel = st.selectbox("날짜 선택", all_dates, index=0 if all_dates else None)
-    day_notes = notes_by_date.get(sel, [])
+    # ✅ 자동 반영 프리뷰 (읽기 전용) — 현재 user_data 상태를 즉시 보여줌
+    st.markdown('<div class="preview-card">', unsafe_allow_html=True)
+    st.markdown("**현재 빠른 메모 / 오늘 할 일 (자동 반영)**")
+    memo_preview = (user_data.get("memo") or "").strip() or "—"
+    st.write(memo_preview)
+    todos = user_data.get("todo_items", []) or []
+    if todos:
+        st.markdown("<div class='preview-todo'>", unsafe_allow_html=True)
+        st.markdown("**오늘 할 일**")
+        for t in todos:
+            st.write(f"• {t.get('text','')}")
+        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    if st.session_state.search_q:
-        ql = st.session_state.search_q.lower()
+    # 제출값 우선
+    q = st.session_state.q_committed or st.session_state.get("q_input", "")
+    sel_date = st.session_state.sel_date_committed or st.session_state.get("date_input", default_date)
+    sel_key = sel_date.strftime("%Y-%m-%d")
+
+    # 데이터 필터
+    day_notes = notes_by_date.get(sel_key, [])
+    if q:
+        ql = q.lower()
         day_notes = [n for n in day_notes
                      if ql in n.get("title","").lower() or ql in n.get("content","").lower()]
 
-    if not day_notes:
-        st.info("이 날짜에는 메모가 없습니다. 왼쪽에서 새 메모를 추가해 보세요.")
-    else:
+    # ✅ 빈 날짜 안내 문구 제거: 아무 것도 렌더하지 않음
+    if day_notes:
         for n in list(day_notes)[::-1]:
             note_id = n["id"]
             st.markdown('<div class="note-card">', unsafe_allow_html=True)
@@ -268,8 +359,10 @@ with right:
                         n["content"] = ec
                         n["updated"] = "방금"
                         save_notes(notes_by_date)
-                        user_data["memo"] = f"{n['title']}\n{n['content']}".strip()
-                        save_user_data(user_data)
+
+                        # ✅ 자동 반영: 빠른 메모 / 오늘 할 일
+                        _autosync_user_data_from_note(n["title"], n["content"])
+
                         st.session_state.edit_mode[note_id] = False
                         st.rerun()
                 with col_cancel:
@@ -287,15 +380,14 @@ with right:
                         st.rerun()
                 with col_cancel:
                     if st.button("🗑️ 삭제", key=f"del-{note_id}", use_container_width=True):
-                        notes_by_date[sel] = [x for x in notes_by_date.get(sel, []) if x["id"] != note_id]
-                        if not notes_by_date.get(sel):
-                            del notes_by_date[sel]
+                        notes_by_date[sel_key] = [x for x in notes_by_date.get(sel_key, []) if x["id"] != note_id]
+                        if not notes_by_date.get(sel_key):
+                            del notes_by_date[sel_key]
                         save_notes(notes_by_date)
                         st.rerun()
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
-
-# ================= 마지막 한번 저장 =================
+# 마지막 저장 (방문 시점의 최신 상태를 안전하게 유지)
 save_user_data(st.session_state.user_data)
+st.markdown("</div>", unsafe_allow_html=True)

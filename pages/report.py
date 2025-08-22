@@ -33,7 +33,7 @@ else:
     bg = "#F5F5F7"; fg = "#2B2B2E"; nav_bg = "rgba(255,255,255,.9)"
     panel_bg = "#FFFFFF"; panel_shadow = "rgba(0,0,0,.08)"
 
-# ---- 아바타 ----
+# ---- 아바타/에셋 ----
 def _resolve_assets_root():
     here = os.path.dirname(__file__)
     cands = [
@@ -80,25 +80,20 @@ def current_avatar_uri() -> str:
 
 header_avatar_uri = current_avatar_uri()
 
-# ================= CSS =================
+# ================= CSS (폴더 헤더 1:1 + 헤더 밀착 + 드롭다운 겹침 해결) =================
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;800;900&display=swap');
 
-html, body, .stApp {{
-  background:{bg};
-  color:{fg};
-  font-family:'Noto Sans KR', sans-serif;
-  zoom:1.10; margin:0;
-  overflow-x:hidden;
-}}
+html, body {{ background:{bg}; color:{fg}; font-family:'Noto Sans KR', sans-serif; zoom:1.10; margin:0; }}
+.stApp {{ background:{bg}; }}
 .block-container {{ padding-top:0 !important; }}
-header, [data-testid="stToolbar"], #MainMenu, [data-testid="stSidebar"] {{ display:none !important; }}
+header {{ display:none !important; }}
 
-/* 본문 컨테이너 */
-.container {{ max-width:1200px; margin:auto; padding:4px 40px 24px; }}
+/* 본문 컨테이너: 상단 여백 완전 제거 */
+.container {{ max-width:1200px; margin:auto; padding:0 40px 24px; }}
 
-/* ====== 헤더(폴더페이지와 동일 규격) ====== */
+/* 헤더(폴더 페이지와 동일) */
 a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 .top-nav {{
   display:flex; justify-content:space-between; align-items:center;
@@ -110,16 +105,19 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 .nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:700; }}
 .nav-menu div a {{ color:#000 !important; transition:.2s; }}
 .nav-menu div:hover a {{ color:#FF9330 !important; }}
-
-/* 프로필(폴더페이지 동일) */
 .profile-group {{ display:flex; gap:16px; align-items:center; margin-right:12px; }}
 .profile-icon {{
-  width:36px; height:36px; border-radius:50%;
-  background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
-  overflow:hidden; display:flex; align-items:center; justify-content:center;
-  box-shadow:0 1px 2px rgba(0,0,0,.06);
+  width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
+  overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.06);
 }}
-.profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
+.profile-icon img {{ width:100%; height:100%; object-fit:contain; }}
+
+/* 헤더 바로 다음 형제 블록들의 상단 여백/패딩 제거 */
+.top-nav + * {{ margin-top:0 !important; padding-top:0 !important; }}
+.top-nav + [data-testid="stVerticalBlock"],
+.top-nav + div [data-testid="stVerticalBlock"] {{
+  margin-top:0 !important; padding-top:0 !important;
+}}
 
 /* 패널 */
 .panel {{
@@ -127,14 +125,14 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
   background:{panel_bg};
   border-radius:18px;
   box-shadow:0 6px 24px {panel_shadow};
-  overflow:hidden;
-  margin-top:0px;
+  overflow:visible !important;   /* ▼ 드롭다운이 패널 밖으로 나와도 보이도록 */
+  margin-top:0 !important;
 }}
 .panel-head {{
   background: linear-gradient(90deg,#FF9330,#FF7A00);
   color:white; text-align:center; font-size:34px; font-weight:900; padding:18px 20px;
 }}
-.panel-body {{ padding:8px 36px 20px; }}
+.panel-body {{ padding:0 36px 20px !important; }}
 
 /* 요약카드 */
 .metrics {{
@@ -157,14 +155,14 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 }}
 .section-head .chev {{ margin-left:auto; opacity:.5; }}
 
-/* 하얀 카드 */
+/* 흰 카드(Plotly 컨테이너) */
 [data-testid="stVerticalBlockBorderWrapper"]{{
   background:#FFFFFF; border:1px solid rgba(0,0,0,.06);
   border-radius:14px; box-shadow:0 4px 12px rgba(0,0,0,.06);
   padding:10px 12px;
 }}
 
-/* 🔒 하루집중도: 오픈월드식 박스 */
+/* 하루 집중도 박스 */
 .focus-guard {{
   border-radius:12px;
   overflow:hidden;
@@ -181,16 +179,29 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 .focus-guard .js-plotly-plot .draglayer {{ cursor: grab; }}
 .focus-guard .js-plotly-plot .draglayer:active {{ cursor: grabbing; }}
 
-/* 헤딩 앵커 숨김 */
+/* 헤딩 앵커 숨김 + 유령 여백 제거 */
 [data-testid="stHeading"] a,
 [data-testid="stHeading"] svg,
 [data-testid="stMarkdownContainer"] h1 a,
 [data-testid="stMarkdownContainer"] h2 a,
 [data-testid="stMarkdownContainer"] h3 a {{ display:none !important; visibility:hidden !important; pointer-events:none !important; }}
+.block-container > div:empty {{ display:none !important; margin:0 !important; padding:0 !important; }}
+[data-testid="stMarkdownContainer"] p {{ margin:0 !important; }}
+
+/* ▼ 드롭다운(Selectbox) 겹침/잘림 수정 */
+[data-testid="stSelectbox"] {{ position: relative; z-index: 20; }}
+[data-testid="stSelectbox"] [role="listbox"],
+[data-testid="stSelectbox"] [data-baseweb="menu"],
+[data-testid="stSelectbox"] [data-baseweb="popover"] {{
+  z-index: 9999 !important;
+}}
+.section-head, .focus-cage, .focus-card, .clip-shield {{
+  position: relative; z-index: 1;
+}}
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 공통 헤더 (폴더페이지와 동일) =================
+# ================= 공통 헤더 (폴더 페이지와 동일 HTML, /mainpage 링크) =================
 st.markdown(f"""
 <div class="top-nav">
   <div class="nav-left">
@@ -198,7 +209,7 @@ st.markdown(f"""
     <div class="nav-menu">
       <div><a href="/mainpage" target="_self">메인페이지</a></div>
       <div><a href="/main" target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
+      <div><a href="/ocr_paddle" target="_self">PDF 요약</a></div>
       <div><a href="/folder_page" target="_self">저장폴더</a></div>
       <div><a href="/quiz" target="_self">퀴즈</a></div>
       <div><a href="/report" target="_self">리포트</a></div>
@@ -214,7 +225,7 @@ st.markdown(f"""
 # ================= 본문 =================
 st.markdown('<div class="container">', unsafe_allow_html=True)
 st.markdown('<div class="panel">', unsafe_allow_html=True)
-st.markdown('<div class="panel-head">리포트</div>', unsafe_allow_html=True)
+# 주황색 큰 바는 숨김(폴더 페이지와 달리 panel-head 미출력)
 st.markdown('<div class="panel-body">', unsafe_allow_html=True)
 
 # ---------------- 데이터 (예시) ----------------
@@ -309,7 +320,7 @@ with c1_chart:
             mode="gauge+number",
             value=val,
             number={'suffix': f" {unit}", 'font': {'size': 20}},
-            title={'text': custom_label, 'font': {'size': 14}, 'align': 'center'},
+            title={'text': "", 'font': {'size': 14}, 'align': 'center'},
             domain={'x': [0.00, 0.90], 'y': [0.00, 1.00]},
             gauge={
                 'axis': {'range': [0, max_range], 'tickfont': {'size': 10}},
@@ -357,8 +368,7 @@ with c2_chart:
         att_fig.update_layout(
             margin=dict(l=10, r=10, t=6, b=40),
             showlegend=False, paper_bgcolor='rgba(0,0,0,0)',
-            annotations=[dict(text=f"{present_rate:.1f}% 출석", x=0.5, y=0.5,
-                              font=dict(size=18), showarrow=False)]
+            annotations=[]
         )
         center_left(att_fig, DONUT_H, right_bias=0.26, mid=0.78)
 
@@ -428,7 +438,7 @@ st.markdown("""
 
 st.markdown('<div class="section-head"><span>하루 집중도</span><span class="chev">▾</span></div>', unsafe_allow_html=True)
 
-# ▶ 우리의 케이지 + 카드 + 하드 클리핑 레이어
+# ▶ 케이지 + 카드 + 클리핑 레이어
 st.markdown('<div class="focus-cage"><div class="focus-card"><div class="clip-shield">', unsafe_allow_html=True)
 
 focus_day = st.session_state.get("focus_day", default_end)
@@ -444,7 +454,6 @@ else:
         {"time":"10:00","blinks":4,"yawns":2},
     ]
     for ev in base_events:
-        ev("blinks")
         ev["blinks"] = max(0, ev["blinks"] + rnd.randint(-1,1))
         ev["yawns"]  = max(0, ev["yawns"]  + rnd.randint(-1,1))
 
@@ -471,7 +480,7 @@ scores, hover = [], []
 for h in range(0, 24, 2):
     h0 = day0 + timedelta(hours=h)
     h1 = h0 + timedelta(hours=2)
-    studied_min = 0.0; blink_part = 0.0; yawn_part = 0.0
+    studied_min = 0.0; blink_part = 0.0; yawn_part  = 0.0
     for ses in sessions:
         s, e, L = ses["start"], ses["end"], float(ses["length"])
         inter = max(0.0, (min(e, h1) - max(s, h0)).total_seconds()/60.0)
@@ -493,7 +502,8 @@ if dark:
 else:
     bar_color = "#FF9330"; grid_col = "rgba(0,0,0,0.08)"; grid_col_y = "rgba(0,0,0,0.06)"
 
-text_fg = [f"{int(v)}%" if v > 0 else "" for v in scores]
+# 라벨
+text_fg = [f"{int(val)}%" if val > 0 else "" for val in scores]
 
 # 보기 구간
 VIEW_HOURS = 24
