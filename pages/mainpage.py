@@ -52,6 +52,10 @@ if "todo_preview" not in st.session_state:
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = ud.get("dark_mode", False)
 
+# 🔒 다크모드 기능 비활성화: 항상 라이트 모드 고정
+st.session_state.dark_mode = False
+ud["dark_mode"] = False
+
 if st.session_state.dark_mode:
     bg_color = "#1C1C1E"; font_color = "#F2F2F2"
     card_bg = "#2C2C2E"; nav_bg = "#2C2C2E"
@@ -201,14 +205,7 @@ with col1:
     </div>
     """, unsafe_allow_html=True)
 
-    # 주황색 박스 바로 아래: 다크모드 버튼(기존 크기와 비슷하게)
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    if st.button("🌗 다크모드", key="dark_toggle"):
-        st.session_state.dark_mode = not st.session_state.dark_mode
-        ud["dark_mode"] = st.session_state.dark_mode
-        with open("user_data.json", "w", encoding="utf-8") as f:
-            json.dump(ud, f, ensure_ascii=False, indent=2)
-        st.rerun()
+    # 🔽 (다크모드 토글 UI 제거됨)
 
 with col2:
     # 오른쪽 열: 상단 정렬 + 초밀착
@@ -287,4 +284,4 @@ with col2:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# (하단) 다크모드 토글 블록은 제거됨 — 위에서 주황색 박스 바로 아래에 배치됨
+# (하단) 다크모드 토글 블록은 제거됨

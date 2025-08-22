@@ -9,63 +9,32 @@ st.set_page_config(page_title="랭킹 & 캐릭터/상점", layout="wide", initia
 USER_JSON_PATH = "user_data.json"
 ASSETS_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets"))
 
-# -------------------- items (모자 상점: 기존 변수 유지) --------------------
-# 아이템은 500P 고정
-ITEMS = [
-    {"id": "cap", "name": "캡모자", "emoji": "🧢", "price": 500},
-]
-ITEMS_BY_ID = {it["id"]: it for it in ITEMS}
-
-# ===== 추가 카탈로그 =====
+# -------------------- catalog --------------------
 CHARACTERS = [
-    {"id": "bear",   "name": "곰",   "price": 1000},
-    {"id": "cat",    "name": "고양이", "price": 1000},
-    {"id": "rabbit", "name": "토끼",   "price": 1000},
-    {"id": "shiba",  "name": "시바",   "price": 1000},
+    {"id": "ddalkkak", "name": "딸깍공", "price": 0},
+    {"id": "shiba",    "name": "강아지", "price": 1000},
+    {"id": "cat",      "name": "고양이", "price": 1000},
+    {"id": "rabbit",   "name": "토끼",   "price": 1000},
+    {"id": "bear",     "name": "곰",     "price": 1000},
 ]
-
-GLASSES_ITEMS = [
-    {"id": "round", "name": "동그란 안경", "emoji": "👓", "price": 500},
-]
-SCARF_ITEMS = [
-    {"id": "red_scarf", "name": "빨간 목도리", "emoji": "🧣", "price": 500},
-]
-CLOTHES_ITEMS = [
-    {"id": "hoodie", "name": "후드티", "emoji": "🧥", "price": 500},
-]
-SHOES_ITEMS = [
-    {"id": "sneakers", "name": "운동화", "emoji": "👟", "price": 500},
-]
-WINGS_ITEMS = [
-    {"id": "angel_wing", "name": "천사 날개", "emoji": "🪽", "price": 500},
-]
-
-# 카테고리-세션키 매핑(기존 키 유지 + 확장)
-SHOP_CATEGORIES = {
-    "모자":    {"items": ITEMS,          "owned_key": "owned_hats",    "equipped_key": "equipped_hat"},
-    "안경":    {"items": GLASSES_ITEMS,  "owned_key": "owned_glasses", "equipped_key": "equipped_glasses"},
-    "목도리":  {"items": SCARF_ITEMS,    "owned_key": "owned_scarves", "equipped_key": "equipped_scarf"},
-    "옷":      {"items": CLOTHES_ITEMS,  "owned_key": "owned_clothes", "equipped_key": "equipped_clothes"},
-    "신발":    {"items": SHOES_ITEMS,    "owned_key": "owned_shoes",   "equipped_key": "equipped_shoes"},
-    "날개":    {"items": WINGS_ITEMS,    "owned_key": "owned_wings",   "equipped_key": "equipped_wings"},
-}
+def char_kor_name(cid: str) -> str:
+    return ("딸깍공" if cid=="ddalkkak" else
+            "강아지" if cid=="shiba" else
+            "고양이" if cid=="cat" else
+            "토끼"   if cid=="rabbit" else
+            "곰"     if cid=="bear" else "미보유")
 
 # -------------------- defaults --------------------
+ALL_CHAR_IDS = [c["id"] for c in CHARACTERS]
 DEFAULT_DATA = {
     "dark_mode": False,
     "nickname": "-",
     "coins": 500,
-    "mode": "ranking",        # 'ranking' | 'char' | 'shop'
-    # 캐릭터가 없으면 None → 발바닥 프리뷰
-    "active_char": None,      # bear/cat/rabbit/shiba
-    "owned_chars": [],
-
-    # 기존 모자 키(유지)
-    "owned_hats": [],
-    "equipped_hat": None,
-
-    # 추가 장비 슬롯
-    "owned_glasses": [],  "equipped_glasses": None,
+    "mode": "ranking",                 # 'ranking' | 'shop'
+    "active_char": "ddalkkak",
+    "owned_chars": ALL_CHAR_IDS[:],    # ✅ 지금은 전부 보유로 세팅
+    "owned_hats": [], "equipped_hat": None,
+    "owned_glasses": [], "equipped_glasses": None,
     "owned_scarves": [],  "equipped_scarf": None,
     "owned_clothes": [],  "equipped_clothes": None,
     "owned_shoes": [],    "equipped_shoes": None,
@@ -81,13 +50,21 @@ def load_user_data():
                 data = json.load(f)
         except Exception:
             data = {}
+    # 기본값 채우기
     for k, v in DEFAULT_DATA.items():
         if k not in data:
             data[k] = v
+    # ✅ 지금은 항상 전부 보유(테스트용)
+    data["owned_chars"] = ALL_CHAR_IDS[:]
+    if not data.get("active_char"):
+        data["active_char"] = "ddalkkak"
     return data
 
 if "user_data" not in st.session_state:
     st.session_state.user_data = load_user_data()
+else:
+    # ✅ 세션 중에도 항상 전부 보유 상태 유지(테스트 기간)
+    st.session_state.user_data["owned_chars"] = ALL_CHAR_IDS[:]
 
 def save_user_data(silent=True):
     with open(USER_JSON_PATH, "w", encoding="utf-8") as f:
@@ -98,7 +75,7 @@ def set_mode(m):
     st.session_state.user_data["mode"] = m
     save_user_data()
 
-# 처음 진입은 랭킹 우선
+# 세션 첫 진입은 랭킹
 if "_ranking_defaulted" not in st.session_state:
     st.session_state._ranking_defaulted = True
     set_mode("ranking")
@@ -107,15 +84,10 @@ if "_ranking_defaulted" not in st.session_state:
 dark = st.session_state.user_data.get("dark_mode", False)
 if dark:
     bg_color = "#1C1C1E"; font_color = "#F2F2F2"
-    card_bg = "#2C2C2E"; nav_bg = "#2C2C2E"; nav_link = "#F2F2F2"
-    sub_text = "#CFCFCF"
+    card_bg = "#2C2C2E"; nav_bg = "#2C2C2E"; nav_link = "#F2F2F2"; sub_text = "#CFCFCF"
 else:
     bg_color = "#F5F5F7"; font_color = "#2B2B2E"
-    card_bg = "#FFFFFF"; nav_bg = "rgba(255,255,255,.9)"; nav_link = "#000"
-    sub_text = "#6B7280"
-
-panel_bg     = "#1F1F22" if dark else "#FFFFFF"
-panel_shadow = "rgba(0,0,0,.35)" if dark else "rgba(0,0,0,.08)"
+    card_bg = "#FFFFFF"; nav_bg = "rgba(255,255,255,.9)"; nav_link = "#000"; sub_text = "#374151"
 
 st.markdown(f"""
 <style>
@@ -124,15 +96,20 @@ html, body {{ background:{bg_color}; color:{font_color}; font-family:'Noto Sans 
 .stApp {{ background:{bg_color}; }}
 .block-container {{ padding-top:0 !important; }}
 
+/* 밑줄 전부 제거 */
+a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
+.shop-name, .price-row, .side-chip, .nav-menu a, .nav-left a, .right-note-hero .hero-sub {{ text-decoration:none !important; }}
+
 /* 본문 컨테이너 */
 .container {{ max-width:1200px; margin:auto; padding:4px 40px 24px; }}
-.container.tight-top {{ padding:4px 40px 24px; }}
+.container.tight-top {{ padding:0 40px 24px !important; }}
 
-a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
+/* 스트림릿 기본 패널/툴바 숨김 */
+.panel {{ display:none !important; }} .panel-body {{ padding:0 !important; margin:0 !important; }}
 header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !important; }}
-::selection {{ background:#FF9330; color:white; }}
+[data-testid="stHeading"] a, h1 a, h2 a, h3 a {{ display:none !important; }}
 
-/* ===== 헤더(고정 규격) ===== */
+/* ===== 헤더 ===== */
 .top-nav {{
   display:flex; justify-content:space-between; align-items:center;
   padding:12px 0; margin-top:40px !important; background:{nav_bg};
@@ -157,46 +134,20 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
 /* 공통 카드 */
 .card {{ background:{card_bg}; border:1px solid rgba(0,0,0,.06); border-radius:18px; padding:16px; box-shadow:0 10px 28px rgba(0,0,0,.06); margin-top:16px; }}
 
-/* ===== 패널 (공통) ===== */
-.panel {{
-  position: relative;
-  background:{panel_bg};
-  border-radius:18px;
-  box-shadow:0 6px 24px {panel_shadow};
-  overflow:hidden;
-  margin-top:0px;
-}}
-.panel-head {{
-  background: linear-gradient(90deg,#FF9330,#FF7A00);
-  color:white; text-align:center; font-size:34px; font-weight:900; padding:18px 20px;
-}}
-.panel-body {{ padding:24px 36px 20px; }}
-
-/* 랭킹 리스트 */
+/* ===== 랭킹 ===== */
 .list-card {{ padding:0; }}
 .row {{ display:flex; align-items:center; justify-content:space-between; padding:16px 18px; }}
 .row + .row {{ border-top:1px dashed rgba(0,0,0,0.06); }}
 .left {{ display:flex; align-items:center; gap:14px; }}
-.badge {{
-  width:34px; height:34px; display:flex; align-items:center; justify-content:center;
-  border-radius:10px; background:rgba(0,0,0,0.05); font-weight:800; color:#333;
-}}
+.badge {{ width:34px; height:34px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:rgba(0,0,0,0.05); font-weight:800; color:#333; }}
 .badge.gold   {{ background:#FCD34D; }}
 .badge.silver {{ background:#E5E7EB; }}
-.badge.bronze {{ background:#F59E0B; color:white; }}
-.rank-avatar {{
-  width:44px; height:44px; border-radius:12px;
-  display:flex; align-items:center; justify-content:center;
-  background:linear-gradient(135deg,#DDEFFF,#F8FBFF); overflow:hidden;
-}}
+.badge.bronze {{ background:#F59E0B; color:#fff; }}
+.rank-avatar {{ width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#DDEFFF,#F8FBFF); overflow:hidden; }}
 .rank-avatar img {{ width:80%; height:80%; object-fit:contain; image-rendering:auto; }}
 .small {{ color:{sub_text}; font-size:14px; }}
 
-/* 사이드 */
-.side-card .big {{ font-size:28px; font-weight:800; }}
-.side-card .muted {{ color:{sub_text}; }}
-
-/* 사이드 상단 칩 */
+/* ===== 우측 캐릭터 카드 ===== */
 .side-chip {{
   display:block; width:100%;
   background:linear-gradient(90deg,#FF9330,#FF7A00);
@@ -205,8 +156,6 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
   box-shadow:0 10px 22px rgba(255,147,48,.28);
   margin:0 0 12px 0;
 }}
-
-/* 캐릭터 히어로 */
 .right-note {{ text-align:center; padding:22px 16px; }}
 .right-note-hero {{ padding-top:26px; padding-bottom:26px; }}
 .right-note-hero .hero-circle {{
@@ -217,45 +166,29 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
   box-shadow: 0 8px 22px rgba(0,0,0,.06), inset 0 -14px 24px rgba(0,0,0,.03);
 }}
 .right-note-hero .hero-circle img {{ width:72%; height:72%; object-fit:contain; image-rendering:auto; }}
-.right-note-hero .hero-title {{ margin-top:16px; font-weight:800; font-size:18px; letter-spacing:.2px; }}
-.right-note-hero .hero-sub {{ margin-top:4px; color:{sub_text}; font-size:13.5px; }}
+.right-note-hero .hero-sub {{ margin-top:8px; color:{sub_text}; font-size:13.5px; }}
 
-/* 상점 전용 */
-.shop-toolbar {{ display:flex; gap:12px; align-items:center; margin:4px 0 14px 0; }}
-.coin-pill {{ padding:8px 12px; border-radius:999px; background:#FFF; border:1px solid rgba(0,0,0,.06); font-weight:700; box-shadow:0 4px 10px rgba(0,0,0,.04); }}
+/* ===== 상점: 카드 + 아래 CTA 카드 ===== */
+.shop-grid {{ display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:16px; margin-top:8px; }}
+.card.shop-card {{ border-radius:28px; padding:28px; box-shadow:0 22px 55px rgba(0,0,0,.08); }}
+.shop-name {{ font-weight:900; font-size:24px; color:#1f2937; margin-bottom:12px; }}
+.shop-img {{ width:74%; max-width:260px; border-radius:16px; background:transparent; border:0; box-shadow:none; object-fit:contain; display:block; margin:10px auto 0; }}
+.price-row {{ margin-top:16px; font-size:22px; font-weight:800; color:#1f2937; }}
+.price-row .coin {{ font-size:1.05em; margin:0 6px; }}
 
-.shop-card {{ text-align:center; padding-top:18px; padding-bottom:14px; }}
-.shop-name {{ font-weight:800; margin-top:10px; }}
-.shop-price {{ color:{sub_text}; margin-top:4px; }}
-.shop-img {{
-  width:72%; max-width:220px; border-radius:16px;
-  background:#FFF; border:1px solid rgba(0,0,0,.06);
-  box-shadow:0 8px 22px rgba(0,0,0,.06); object-fit:contain;
-}}
-.shop-btn :where(button) {{
-  width:100%; margin-top:10px; border-radius:12px; border:0; padding:10px 12px; font-weight:800;
-  background:#F5F7FB; color:#2B2B2E; box-shadow:0 4px 10px rgba(0,0,0,.05); cursor:pointer;
-}}
-.shop-btn :where(button):hover {{ background:#EBF0FF; }}
-.shop-btn :where(button):active {{ transform:translateY(1px); }}
+/* CTA 아래 박스 */
+.char-stack {{ display:flex; flex-direction:column; gap:10px; }}
+.card.cta-card {{ border-radius:18px; padding:14px 16px; box-shadow:0 14px 34px rgba(0,0,0,.06); }}
+.cta-row {{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }}
+.cta-row form {{ display:inline-block; margin:0; }}
 
-/* 모자 미리보기 하단 썸네일 */
-.thumb-row {{ display:flex; justify-content:center; gap:10px; margin-top:10px; }}
-.thumb {{
-  width:52px; height:52px; border-radius:12px; overflow:hidden;
-  border:2px solid rgba(0,0,0,.06); background:#FFF;
-  box-shadow:0 4px 10px rgba(0,0,0,.05);
-}}
-.thumb.active {{ border-color:#FF9330; box-shadow:0 6px 16px rgba(255,147,48,.25); }}
-.thumb img {{ width:100%; height:100%; object-fit:cover; }}
-
-/* 사이드 CTA 버튼 */
-.side-cta :where(.stButton) button {{
-  width:100%; padding:12px 14px; border-radius:12px; border:0; font-weight:800; cursor:pointer;
-  background:#F5F7FB; color:#2B2B2E; box-shadow:0 4px 10px rgba(0,0,0,.05);
-}}
-.side-cta :where(.stButton) button:hover {{ background:#EBF0FF; }}
-.side-cta :where(.stButton) button:active {{ transform:translateY(1px); }}
+/* ⬜ 흰 배경 + 검정 글씨 버튼 */
+.cta-btn {{ display:inline-block; padding:10px 18px; border-radius:14px; border:1px solid rgba(0,0,0,.06);
+  font-weight:900; background:#FFFFFF; color:#111111; box-shadow:0 8px 18px rgba(0,0,0,.06); cursor:pointer; }}
+.cta-btn:hover {{ background:#F3F4F6; }}
+/* 회색 배지(보유중/사용중) */
+.cta-pill {{ display:inline-block; padding:10px 16px; border-radius:14px; border:1px solid rgba(0,0,0,.06); background:#F1F2F4; color:#4B5563; font-weight:800; }}
+.cta-pill.disabled {{ opacity:.55; }}
 
 /* 스트림릿 빈 블럭 정리 */
 .block-container > div:empty {{ display:none !important; margin:0 !important; padding:0 !important; }}
@@ -269,10 +202,10 @@ def to_data_uri(abs_path: str) -> str:
     return f"data:image/png;base64,{b64}"
 
 def get_char_image_uri(char_key: str | None, hat_id: str | None = None) -> str:
-    # 캐릭터가 없으면 발바닥
-    if not char_key:
-        return "data:image/svg+xml;utf8," \
-               "<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><text x='50%' y='60%' font-size='96' text-anchor='middle'>🐾</text></svg>"
+    if char_key == "ddalkkak" or not char_key:
+        return ("data:image/svg+xml;utf8,"
+                "<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'>"
+                "<text x='50%' y='60%' font-size='96' text-anchor='middle'>🐾</text></svg>")
     keys = [char_key] + (["siba"] if char_key == "shiba" else [])
     candidates = []
     if hat_id:
@@ -284,85 +217,50 @@ def get_char_image_uri(char_key: str | None, hat_id: str | None = None) -> str:
         candidates.append(os.path.join(ASSETS_ROOT, "characters", f"{k}.png"))
     for p in candidates:
         if os.path.exists(p): return to_data_uri(p)
-    return "data:image/svg+xml;utf8," \
-           "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>"
-
-# ▼ 아이템 프리뷰: (업데이트) 캐릭터별 모자 이미지를 우선 사용
-def get_shop_item_image_uri(category_name: str, item_id: str, char_key: str | None = None) -> str:
-    """
-    assets/items/<folder>/ 에서 아이템 프리뷰 이미지를 찾아 반환.
-    - 모자(category '모자'): char_key가 있으면 <char_alias><item_id>.png 를 우선 사용
-      예) assets/items/hats/rabbitcap.png, bearcap.png, catcap.png, sibacap.png
-    - 그 외: item_id.png → placeholder
-    """
-    folder_map = {
-        "모자": "hats",
-        "안경": "glasses",
-        "목도리": "scarves",
-        "옷": "clothes",
-        "신발": "shoes",
-        "날개": "wings",
-    }
-    folder = folder_map.get(category_name, "")
-    base_dir = os.path.join(ASSETS_ROOT, "items", folder) if folder else None
-
-    # alias: shiba → siba
-    if char_key == "shiba":
-        char_aliases = ["siba", "shiba"]
-    elif char_key:
-        char_aliases = [char_key]
-    else:
-        char_aliases = []
-
-    if base_dir and os.path.isdir(base_dir):
-        candidates = []
-        # 1) 캐릭터별 미리보기 (모자)
-        if category_name == "모자" and char_aliases:
-            for c in char_aliases:
-                candidates.append(os.path.join(base_dir, f"{c}{item_id}.png"))      # rabbitcap.png
-                candidates.append(os.path.join(base_dir, f"{c}_{item_id}.png"))     # rabbit_cap.png
-                candidates.append(os.path.join(base_dir, f"{c}-{item_id}.png"))     # rabbit-cap.png
-        # 2) 일반 파일명
-        candidates.append(os.path.join(base_dir, f"{item_id}.png"))
-        for p in candidates:
-            if os.path.exists(p):
-                return to_data_uri(p)
-
-    # placeholder (흰박스)
     return ("data:image/svg+xml;utf8,"
-            "<svg xmlns='http://www.w3.org/2000/svg' width='280' height='280'>"
-            "<rect x='0' y='0' width='100%' height='100%' rx='26' ry='26' fill='white'/>"
-            "</svg>")
+            "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'>"
+            "<text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>")
 
 def _avatar_uri_for_current_user() -> str:
     u = st.session_state.user_data
-    char_key = u.get("active_char")  # None이면 발바닥
-    hat_id = u.get("equipped_hat")
-    if hat_id and (hat_id in u.get("owned_hats", [])):
-        return get_char_image_uri(char_key, hat_id)
-    return get_char_image_uri(char_key, None)
+    return get_char_image_uri(u.get("active_char"), None)
+
+# ---------- query params helpers ----------
+def _get_query_params():
+    try:
+        return dict(st.query_params)  # >= 1.32
+    except Exception:
+        return {k: v[0] if isinstance(v, list) else v
+                for k, v in st.experimental_get_query_params().items()}
+
+def _set_query_params(new_params: dict):
+    try:
+        st.query_params.clear()
+        if new_params:
+            st.query_params.update(new_params)
+    except Exception:
+        st.experimental_set_query_params(**new_params)
 
 # -------------------- header --------------------
 header_avatar_uri = _avatar_uri_for_current_user()
-st.markdown(f"""
-<div class="top-nav">
-  <div class="nav-left">
-    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
-    <div class="nav-menu">
-      <div><a href="/mainpage" target="_self">메인페이지</a></div>
-      <div><a href="/main" target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
-      <div><a href="/folder_page" target="_self">저장폴더</a></div>
-      <div><a href="/quiz" target="_self">퀴즈</a></div>
-      <div><a href="/report" target="_self">리포트</a></div>
-      <div><a href="/ranking" target="_self">랭킹</a></div>
-    </div>
-  </div>
-  <div class="profile-group">
-    <div class="profile-icon" title="내 캐릭터"><img src="{header_avatar_uri}" alt="avatar"/></div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    '<div class="top-nav">'
+    '  <div class="nav-left">'
+    '    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>'
+    '    <div class="nav-menu">'
+    '      <div><a href="/mainpage" target="_self">메인페이지</a></div>'
+    '      <div><a href="/main" target="_self">공부 시작</a></div>'
+    '      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>'
+    '      <div><a href="/folder_page" target="_self">저장폴더</a></div>'
+    '      <div><a href="/quiz" target="_self">퀴즈</a></div>'
+    '      <div><a href="/report" target="_self">리포트</a></div>'
+    '      <div><a href="/ranking" target="_self">랭킹</a></div>'
+    '    </div>'
+    '  </div>'
+    f'  <div class="profile-group"><div class="profile-icon" title="내 캐릭터"><img src="{header_avatar_uri}" alt="avatar"/></div></div>'
+    '</div>',
+    unsafe_allow_html=True
+)
 
 # -------------------- 랭킹 데이터 --------------------
 RANK_DATA = [
@@ -376,127 +274,72 @@ RANK_DATA = [
     {"name":"크림림","attempts":3,"points":300},
     {"name":"dbwngus","attempts":2,"points":180},
 ]
-
 def sort_by_period(period, data):
-    if period == "주간":
-        return sorted(data, key=lambda x: (x["attempts"], x["points"]), reverse=True)
-    if period == "월간":
-        return sorted(data, key=lambda x: (x["points"], x["attempts"]), reverse=True)
+    if period == "주간": return sorted(data, key=lambda x: (x["attempts"], x["points"]), reverse=True)
+    if period == "월간": return sorted(data, key=lambda x: (x["points"], x["attempts"]), reverse=True)
     return sorted(data, key=lambda x: (x["attempts"]*2 + x["points"]//200), reverse=True)
-
-def _rank_avatar_uri() -> str:
-    return _avatar_uri_for_current_user()
 
 # -------------------- views --------------------
 def view_ranking():
     u = st.session_state.user_data
-
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown('<div class="panel-head">랭킹</div>', unsafe_allow_html=True)
-    st.markdown('<div class="panel-body">', unsafe_allow_html=True)
-
-    c1, c2 = st.columns([1,3])
-    with c1:
-        try:
-            period = st.segmented_control("기간", options=["주간","월간","전체"], default="주간")
-        except Exception:
-            period = st.radio("기간", ["주간","월간","전체"], horizontal=True, index=0)
-    with c2:
-        q = ""
-
-    left, right = st.columns([3,1])
-
-    ranked = sort_by_period(period, RANK_DATA)
-    if q.strip():
-        ranked = [r for r in ranked if q.strip() in r["name"]]
-
-    avatar_uri = _rank_avatar_uri()
+    left, right = st.columns([3,1], gap="large")
 
     with left:
+        try:
+            col1, col2 = st.columns([1.05, 2.2])
+            with col1:
+                period = st.segmented_control("기간", options=["주간","월간","전체"], default="주간")
+            with col2:
+                search = st.text_input("닉네임 검색", value="", placeholder="닉네임 검색", label_visibility="collapsed")
+        except Exception:
+            col1, col2 = st.columns([1.05, 2.2])
+            with col1:
+                period = st.radio("기간", ["주간","월간","전체"], horizontal=True, index=0)
+            with col2:
+                search = st.text_input("닉네임 검색", value="", placeholder="닉네임 검색")
+
+        ranked = sort_by_period(period, RANK_DATA)
+        if search.strip():
+            q = search.strip().lower()
+            ranked = [r for r in ranked if q in r["name"].lower()]
+
+        avatar_uri = _avatar_uri_for_current_user()
         st.markdown('<div class="card list-card">', unsafe_allow_html=True)
         for i, r in enumerate(ranked, 1):
             cls = "badge"
             if i == 1: cls += " gold"
             elif i == 2: cls += " silver"
             elif i == 3: cls += " bronze"
-
-            st.markdown(f"""
-            <div class="row">
-              <div class="left">
-                <div class="{cls}">{i}</div>
-                <div class="rank-avatar"><img src="{avatar_uri}" alt="avatar"/></div>
-                <div>
-                  <div style="font-weight:700">{r["name"]}</div>
-                  <div class="small">출석횟수 {r["attempts"]}회</div>
-                </div>
-              </div>
-              <div style="display:flex; gap:10px; align-items:center;">
-                <div class="small">출석횟수 {max(1, r["attempts"]//2)}회</div>
-                <div class="small">⭐ {r["points"]}</div>
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                '<div class="row">'
+                f'  <div class="left"><div class="{cls}">{i}</div>'
+                f'    <div class="rank-avatar"><img src="{avatar_uri}" alt="avatar"/></div>'
+                f'    <div><div style="font-weight:700">{r["name"]}</div>'
+                f'      <div class="small">출석횟수 {r["attempts"]}회</div></div>'
+                f'  </div>'
+                f'  <div style="display:flex; gap:10px; align-items:center;">'
+                f'    <div class="small">출석횟수 {max(1, r["attempts"]//2)}회</div>'
+                f'    <div class="small">⭐ {r["points"]}</div>'
+                f'  </div>'
+                '</div>',
+                unsafe_allow_html=True
+            )
         st.markdown('</div>', unsafe_allow_html=True)
 
     with right:
         st.markdown('<div class="side-chip">내 캐릭터</div>', unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class="card right-note right-note-hero">
-          <div class="hero-circle"><img src="{header_avatar_uri}" alt="avatar"/></div>
-          <div class="hero-title">{'캐릭터 선택됨' if u.get('active_char') else '캐릭터 없음'}</div>
-          <div class="hero-sub">상점에서 캐릭터와 아이템을 구매해 꾸며보세요</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # ▶ 상점 진입 버튼 (🏬)
-        st.markdown('<div class="side-cta">', unsafe_allow_html=True)
-        if st.button("🏬 상점", key="go_shop_side", help="캐릭터/아이템 구매하러 가기"):
-            set_mode("shop")
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)  # .panel-body
-    st.markdown('</div>', unsafe_allow_html=True)  # .panel
-
-def view_char():
-    u = st.session_state.user_data
-    st.subheader("🐾 캐릭터")
-
-    top = st.columns([1,1,1])
-    with top[0]:
-        char_list = ["bear","cat","rabbit","shiba"]
-        try:
-            active = st.segmented_control("캐릭터 선택", options=char_list, default=u.get("active_char") or "rabbit")
-        except Exception:
-            active = st.selectbox("캐릭터 선택", char_list, index=char_list.index((u.get("active_char") or "rabbit")))
-        u["active_char"] = active; save_user_data()
-    with top[1]:
-        st.write("")
-        st.button("📊 랭킹 보기", on_click=lambda: set_mode("ranking"))
-    with top[2]:
-        st.write("")
-        st.button("🏬 상점 가기", on_click=lambda: set_mode("shop"))
-
-    hat_id = u.get("equipped_hat")
-    use_hat = bool(hat_id) and hat_id in u.get("owned_hats", [])
-    img_uri = get_char_image_uri(u.get("active_char"), hat_id if use_hat else None)
-
-    st.markdown(f"""
-    <div class="card" style="max-width:420px; margin:10px auto 0;">
-      <div style="position:relative; width:100%; aspect-ratio: 4/5; border-radius:14px; border:1px dashed rgba(0,0,0,.06);
-                  background: radial-gradient(ellipse at center, rgba(255,147,48,0.10), transparent 60%), {card_bg}; overflow:hidden;">
-        <img style="position:absolute; left:50%; top:62%; transform:translate(-50%,-62%); width:min(56%, 220px); image-rendering:auto;" src="{img_uri}" />
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-def _equip_item(u, owned_key, equipped_key, item_id):
-    if item_id is None:
-        u[equipped_key] = None
-    else:
-        if item_id in u.get(owned_key, []):
-            u[equipped_key] = item_id
-    save_user_data()
+        active_name = char_kor_name(u.get("active_char") or "")
+        preview_uri = _avatar_uri_for_current_user()
+        st.markdown(
+            f'<div class="card right-note right-note-hero">'
+            f'  <div class="hero-circle"><img src="{preview_uri}" alt="avatar"/></div>'
+            f'  <div class="hero-sub">{active_name}</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown('<div style="height:20px"></div>', unsafe_allow_html=True)
+        if st.button("🏬 상점페이지", key="go_shop_side", help="캐릭터/아이템 구매하러 가기"):
+            set_mode("shop"); st.rerun()
 
 def _buy_item(u, price, owned_key, item_id, success_msg, not_enough_msg):
     if u["coins"] >= price:
@@ -510,177 +353,136 @@ def _buy_item(u, price, owned_key, item_id, success_msg, not_enough_msg):
 def view_shop():
     u = st.session_state.user_data
 
-    # ===== 랭킹과 동일한 패널 레이아웃 =====
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown('<div class="panel-head">상점</div>', unsafe_allow_html=True)
-    st.markdown('<div class="panel-body">', unsafe_allow_html=True)
+    # ---- 쿼리파라미터 처리: 구매 / 사용 ----
+    qp = _get_query_params()
+    url_mode = qp.get("mode")
+    if isinstance(url_mode, list): url_mode = url_mode[0]
+    if url_mode in ("shop", "ranking") and st.session_state.user_data.get("mode") != url_mode:
+        set_mode(url_mode)
 
-    left, right = st.columns([3,1])
+    buy = qp.get("shop_buy")
+    use = qp.get("use_char")
+    if isinstance(buy, list): buy = buy[0]
+    if isinstance(use, list): use = use[0]
 
-    # ---------- Right: 내 캐릭터 프리뷰 ----------
+    if buy:
+        ch_map = {c["id"]: c for c in CHARACTERS}
+        if buy in ch_map:
+            ch = ch_map[buy]
+            if buy in u.get("owned_chars", []):
+                st.info("이미 보유중입니다.")
+            else:
+                _buy_item(u, ch["price"], "owned_chars", buy,
+                          f"'{ch['name']}' 캐릭터 구매 완료! 이제 '선택'을 눌러 적용하세요.",
+                          "포인트가 부족합니다.")
+        qp.pop("shop_buy", None)
+        qp["mode"] = "shop"
+        _set_query_params(qp)
+
+    if use:
+        if use in u.get("owned_chars", []):
+            u["active_char"] = use
+            set_mode("shop")
+            save_user_data()
+            st.success(f"{char_kor_name(use)} 캐릭터 사용 중!")
+            qp.pop("use_char", None)
+            qp["mode"] = "shop"
+            _set_query_params(qp)
+            st.rerun()
+        else:
+            st.error("보유하지 않은 캐릭터입니다.")
+            qp.pop("use_char", None); qp["mode"]="shop"; _set_query_params(qp)
+
+    left, right = st.columns([3,1], gap="large")
+
     with right:
         st.markdown('<div class="side-chip">내 캐릭터</div>', unsafe_allow_html=True)
-        hat_id = u.get("equipped_hat")
-        use_hat = bool(hat_id) and hat_id in u.get("owned_hats", [])
-        preview_uri = get_char_image_uri(u.get("active_char"), hat_id if use_hat else None)
+        preview_uri = _avatar_uri_for_current_user()
+        active_name = char_kor_name(u.get("active_char") or "")
+        st.markdown(
+            f'<div class="card right-note right-note-hero">'
+            f'  <div class="hero-circle"><img src="{preview_uri}" alt="avatar"/></div>'
+            f'  <div class="hero-sub">{active_name}</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
 
-        chips = []
-        if u.get("equipped_hat"): chips.append("🧢")
-        if u.get("equipped_glasses"): chips.append("👓")
-        if u.get("equipped_scarf"): chips.append("🧣")
-        if u.get("equipped_clothes"): chips.append("🧥")
-        if u.get("equipped_shoes"): chips.append("👟")
-        if u.get("equipped_wings"): chips.append("🪽")
-        equipped_summary = " ".join(chips) if chips else "—"
-
-        st.markdown(f"""
-        <div class="card right-note right-note-hero">
-          <div class="hero-circle">
-            <img src="{preview_uri}" alt="avatar"/>
-          </div>
-          <div class="hero-title">{'선택된 캐릭터' if u.get('active_char') else '미보유'}</div>
-          <div class="hero-sub">착용 중: {equipped_summary}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # ---------- Left: 상점 콘텐츠 ----------
     with left:
-        st.markdown(f"""
-        <div class="shop-toolbar">
-          <div class="coin-pill">보유 코인: 🪙 {u.get('coins',0)}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div style="font-weight:900; margin:6px 0 10px;">보유 포인트: 🪙 {u.get("coins",0)}</div>', unsafe_allow_html=True)
 
-        # 상단 탭: 캐릭터 / 아이템
-        tabs_col1, tabs_col2 = st.columns([1,3])
-        with tabs_col1:
-            try:
-                top_tab = st.segmented_control("구분", options=["캐릭터", "아이템"], default="캐릭터")
-            except Exception:
-                top_tab = st.radio("구분", ["캐릭터","아이템"], horizontal=True, index=0)
+        # ---- HTML Grid 렌더(위: 이름/이미지/가격, 아래: 버튼 카드) ----
+        order = ["shiba", "cat", "rabbit", "bear"]
+        card_chars = [c for c in CHARACTERS if c["id"] in order]
 
-        if top_tab == "캐릭터":
-            cols = st.columns(4)
-            for i, ch in enumerate(CHARACTERS):
-                with cols[i % 4]:
-                    owned = ch["id"] in u.get("owned_chars", [])
-                    active = (u.get("active_char") == ch["id"])
-                    img_uri = get_char_image_uri(ch["id"], None)
+        parts = ['<div class="shop-grid">']
+        for ch in card_chars:
+            owned = ch["id"] in u.get("owned_chars", [])
+            active = (u.get("active_char") == ch["id"])
+            img_uri = get_char_image_uri(ch["id"], None)
 
-                    st.markdown('<div class="card shop-card">', unsafe_allow_html=True)
-                    st.markdown(f'<div><img src="{img_uri}" class="shop-img" alt="char"/></div>', unsafe_allow_html=True)
-                    st.markdown(f"<div class='shop-name'>{ch['name']}</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='shop-price'>가격: 🪙 {ch['price']}</div>", unsafe_allow_html=True)
+            top_card = (
+                f'<div class="card shop-card">'
+                f'  <div class="shop-name">{ch["name"]}</div>'
+                f'  <div><img src="{img_uri}" class="shop-img" alt="char"/></div>'
+                f'  <div class="price-row">가격:<span class="coin"> 🪙</span> {ch["price"]}</div>'
+                f'</div>'
+            )
 
-                    st.markdown("<div class='shop-btn'>", unsafe_allow_html=True)
-                    if not owned:
-                        if st.button(f"구매 ({ch['name']})", key=f"buy_char_{ch['id']}"):
-                            _buy_item(u, ch["price"], "owned_chars", ch["id"],
-                                      f"'{ch['name']}' 캐릭터 구매 완료! 적용하려면 '선택'을 눌러주세요.",
-                                      "코인이 부족합니다.")
-                    else:
-                        if active:
-                            if st.button("선택 해제", key=f"unset_char_{ch['id']}"):
-                                u["active_char"] = None
-                                save_user_data()
-                                st.info("캐릭터 선택 해제됨.")
-                        else:
-                            if st.button("선택", key=f"set_char_{ch['id']}"):
-                                u["active_char"] = ch["id"]
-                                save_user_data()
-                                st.success(f"{ch['name']} 캐릭터 적용!")
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
+            # 버튼 영역: form(method=get) → 같은 탭에서만 동작
+            if not owned:
+                btns = (
+                    f'<form method="get">'
+                    f'  <input type="hidden" name="mode" value="shop"/>'
+                    f'  <input type="hidden" name="shop_buy" value="{ch["id"]}"/>'
+                    f'  <button type="submit" class="cta-btn">구매</button>'
+                    f'</form>'
+                    f'<form method="get">'
+                    f'  <input type="hidden" name="mode" value="shop"/>'
+                    f'  <input type="hidden" name="use_char" value="{ch["id"]}"/>'
+                    f'  <button type="submit" class="cta-btn">선택</button>'
+                    f'</form>'
+                )
+            elif active:
+                btns = (
+                    f'<span class="cta-pill">보유중</span>'
+                    f'<span class="cta-pill disabled">사용중</span>'
+                )
+            else:
+                btns = (
+                    f'<span class="cta-pill">보유중</span>'
+                    f'<form method="get">'
+                    f'  <input type="hidden" name="mode" value="shop"/>'
+                    f'  <input type="hidden" name="use_char" value="{ch["id"]}"/>'
+                    f'  <button type="submit" class="cta-btn">선택</button>'
+                    f'</form>'
+                )
 
-        else:
-            # 아이템 카테고리 탭
-            try:
-                cat = st.segmented_control("카테고리", options=list(SHOP_CATEGORIES.keys()), default="모자")
-            except Exception:
-                cat = st.radio("카테고리", list(SHOP_CATEGORIES.keys()), horizontal=True, index=0)
+            bottom_card = f'<div class="card cta-card"><div class="cta-row">{btns}</div></div>'
+            parts.append(f'<div class="char-stack">{top_card}{bottom_card}</div>')
 
-            cfg = SHOP_CATEGORIES[cat]
-            items = cfg["items"]; owned_key = cfg["owned_key"]; eq_key = cfg["equipped_key"]
+        parts.append('</div>')
+        st.markdown("".join(parts), unsafe_allow_html=True)
 
-            cols = st.columns(4)
-            for i, it in enumerate(items):
-                with cols[i % 4]:
-                    owned    = it["id"] in u.get(owned_key, [])
-                    equipped = (u.get(eq_key) == it["id"])
-
-                    st.markdown('<div class="card shop-card">', unsafe_allow_html=True)
-
-                    # === 모자: 캐릭터 선택형 프리뷰 ===
-                    if cat == "모자":
-                        # 프리뷰 캐릭터 선택(세그먼트/라디오)
-                        char_map = [("bear","곰"), ("cat","고양이"), ("rabbit","토끼"), ("shiba","시바")]
-                        default_id = st.session_state.get("hat_preview_char") or (u.get("active_char") or "rabbit")
-                        default_label = next((label for cid,label in char_map if cid==default_id), "토끼")
-                        try:
-                            sel_label = st.segmented_control("프리뷰 캐릭터", options=[l for _,l in char_map], default=default_label)
-                        except Exception:
-                            sel_label = st.radio("프리뷰 캐릭터", [l for _,l in char_map], horizontal=True,
-                                                 index=[l for _,l in char_map].index(default_label))
-                        sel_id = next(cid for cid,lbl in char_map if lbl==sel_label)
-                        st.session_state["hat_preview_char"] = sel_id
-
-                        main_img = get_shop_item_image_uri(cat, it["id"], sel_id)
-                        st.markdown(f'<div><img src="{main_img}" class="shop-img" alt="hat"/></div>', unsafe_allow_html=True)
-
-                        # 썸네일 4개(표시용)
-                        st.markdown("<div class='thumb-row'>", unsafe_allow_html=True)
-                        for cid, lbl in char_map:
-                            thumb_uri = get_shop_item_image_uri(cat, it["id"], cid)
-                            active_cls = "thumb active" if cid==sel_id else "thumb"
-                            st.markdown(f'<div class="{active_cls}"><img src="{thumb_uri}" alt="{lbl}"/></div>', unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
-
-                    else:
-                        # 다른 카테고리는 일반 미리보기
-                        img_uri = get_shop_item_image_uri(cat, it["id"])
-                        st.markdown(f'<div><img src="{img_uri}" class="shop-img" alt="item"/></div>', unsafe_allow_html=True)
-
-                    st.markdown(f"<div class='shop-name'>{it['name']}</div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='shop-price'>가격: 🪙 {it['price']}</div>", unsafe_allow_html=True)
-
-                    st.markdown("<div class='shop-btn'>", unsafe_allow_html=True)
-                    if not owned:
-                        if st.button(f"구매 ({it['name']})", key=f"buy_{cat}_{it['id']}"):
-                            _buy_item(u, it["price"], owned_key, it["id"],
-                                      f"'{it['name']}' 구매 완료!", "코인이 부족합니다.")
-                    else:
-                        if equipped:
-                            if st.button("해제", key=f"unequip_{cat}_{it['id']}"):
-                                _equip_item(u, owned_key, eq_key, None)
-                                st.info(f"'{it['name']}' 해제됨.")
-                        else:
-                            if st.button("착용", key=f"equip_{cat}_{it['id']}"):
-                                _equip_item(u, owned_key, eq_key, it["id"])
-                                st.success(f"'{it['name']}' 착용!")
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-        st.write("")
-        bottom = st.columns([1,1])
-        with bottom[0]:
-            st.button("🐾 내 캐릭터 보기", on_click=lambda: set_mode("char"))
-        with bottom[1]:
-            st.button("📊 랭킹으로", on_click=lambda: set_mode("ranking"))
-
-    # 패널 닫기
-    st.markdown('</div>', unsafe_allow_html=True)   # .panel-body
-    st.markdown('</div>', unsafe_allow_html=True)   # .panel
+        bl, _ = st.columns([1,5])
+        with bl:
+            st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+            st.button("📊 랭킹페이지", on_click=lambda: set_mode("ranking"))
 
 # -------------------- route --------------------
-mode = st.session_state.user_data.get("mode")
-container_class = "container tight-top" if mode == "ranking" else "container"
-st.markdown(f'<div class="{container_class}">', unsafe_allow_html=True)
+qp_route = _get_query_params()
+url_mode = qp_route.get("mode")
+if isinstance(url_mode, list): url_mode = url_mode[0]
+if url_mode in ("ranking", "shop") and st.session_state.user_data.get("mode") != url_mode:
+    set_mode(url_mode)
 
+mode = st.session_state.user_data.get("mode")
+if mode not in ("ranking", "shop"):
+    mode = "ranking"; set_mode(mode)
+
+container_class = "container tight-top" + (" shop-mode" if mode == "shop" else "")
+st.markdown(f'<div class="{container_class}">', unsafe_allow_html=True)
 if mode == "ranking":
     view_ranking()
-elif mode == "shop":
-    view_shop()
 else:
-    view_char()
-
+    view_shop()
 st.markdown('</div>', unsafe_allow_html=True)

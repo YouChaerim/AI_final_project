@@ -598,7 +598,7 @@ with col2:
         "audio": False
     },
     async_processing=True,
-    desired_playing_state=False  # 카메라 강제로 키기
+    desired_playing_state=True  # 카메라 강제로 키기
 )
 
             st.session_state.cam_active = bool(ctx) and getattr(ctx.state, "playing", False)
