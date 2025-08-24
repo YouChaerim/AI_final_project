@@ -87,11 +87,14 @@ vectorstore
 quiz1.py
 quiz.py
 
+uploads/*
 
-/uploads
-
+server/.env
 server/uploads
 server/data
 server/db_insert
 server/report_demo.py
 server/seed_ranking.py
+
+yolo11n.pt
+yolov8n.pt
