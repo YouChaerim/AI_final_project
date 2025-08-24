@@ -1,12 +1,19 @@
-# pages/ranking_and_shop.py
+# pages/ranking.py
 # -*- coding: utf-8 -*-
 import streamlit as st
-import os, json, base64
+import os, base64, requests
+from components.header import render_header
+from components.auth import require_login
 
-st.set_page_config(page_title="랭킹 & 캐릭터/상점", layout="wide", initial_sidebar_state="collapsed")
+print(f"✅✅✅ Executing: {__file__} ✅✅✅")
+BACKEND_URL = "http://127.0.0.1:8080"  # 파일에 이미 있다면 그 값 사용
+require_login(BACKEND_URL)
 
-# -------------------- paths --------------------
-USER_JSON_PATH = "user_data.json"
+user = st.session_state.get("user", {}) or {}
+USER_ID = user.get("id") or user.get("_id") or user.get("user_id") or ""
+
+
+# -------------------- paths & items --------------------
 ASSETS_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets"))
 
 # -------------------- catalog --------------------
@@ -27,8 +34,7 @@ def char_kor_name(cid: str) -> str:
 # -------------------- defaults --------------------
 ALL_CHAR_IDS = [c["id"] for c in CHARACTERS]
 DEFAULT_DATA = {
-    "dark_mode": False,
-    "nickname": "-",
+    "nickname": st.session_state.get("user", {}).get("nickname", "-"),
     "coins": 500,
     "mode": "ranking",                 # 'ranking' | 'shop'
     "active_char": "ddalkkak",
@@ -41,39 +47,18 @@ DEFAULT_DATA = {
     "owned_wings": [],    "equipped_wings": None,
 }
 
-# -------------------- storage --------------------
-def load_user_data():
-    data = {}
-    if os.path.exists(USER_JSON_PATH):
-        try:
-            with open(USER_JSON_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = {}
-    # 기본값 채우기
-    for k, v in DEFAULT_DATA.items():
-        if k not in data:
-            data[k] = v
-    # ✅ 지금은 항상 전부 보유(테스트용)
-    data["owned_chars"] = ALL_CHAR_IDS[:]
-    if not data.get("active_char"):
-        data["active_char"] = "ddalkkak"
-    return data
+# -------------------- session-only storage (no JSON) --------------------
+def _init_user_data():
+    # 리스트는 복사해서 세션에 저장 (기본값 변형 방지)
+    data = {k: (v[:] if isinstance(v, list) else v) for k, v in DEFAULT_DATA.items()}
+    st.session_state.user_data = data
 
 if "user_data" not in st.session_state:
-    st.session_state.user_data = load_user_data()
-else:
-    # ✅ 세션 중에도 항상 전부 보유 상태 유지(테스트 기간)
-    st.session_state.user_data["owned_chars"] = ALL_CHAR_IDS[:]
-
-def save_user_data(silent=True):
-    with open(USER_JSON_PATH, "w", encoding="utf-8") as f:
-        json.dump(st.session_state.user_data, f, ensure_ascii=False, indent=2)
-    if not silent: st.success("저장됨 💾")
+    _init_user_data()
 
 def set_mode(m):
-    st.session_state.user_data["mode"] = m
-    save_user_data()
+    if "user_data" in st.session_state:
+        st.session_state.user_data["mode"] = m
 
 # 세션 첫 진입은 랭킹
 if "_ranking_defaulted" not in st.session_state:
@@ -116,18 +101,21 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
   box-shadow:0 2px 4px rgba(0,0,0,.05);
 }}
 .nav-left {{ display:flex; align-items:center; gap:60px; }}
-.top-nav .nav-left > div:first-child a {{ color:#000 !important; font-size:28px; font-weight:900; }}
-.nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:700; }}
-.nav-menu div a {{ color:{nav_link} !important; transition:.2s; }}
-.nav-menu div:hover a {{ color:#FF9330 !important; }}
-
-/* 헤더 오른쪽 원형 아이콘 */
-.profile-group {{ display:flex; gap:16px; align-items:center; margin-right:12px; }}
-.profile-icon {{
-  width:36px; height:36px; border-radius:50%;
-  background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
-  overflow:hidden; display:flex; align-items:center; justify-content:center;
-  box-shadow:0 1px 2px rgba(0,0,0,.06);
+.nav-left .logo a {{ color:{nav_link} !important; font-size:28px; font-weight:900; }}
+.nav-menu {{ display: flex; align-items: center; gap: 36px; }}
+[data-testid="stPageLink"] a {{
+    color: {nav_link} !important;
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    text-decoration: none !important;
+    transition: .2s;
+    padding: 8px 0px !important;
+}}
+[data-testid="stPageLink"] a:hover {{
+    color: #FF9330 !important;
+}}
+[data-testid="stPageLink"] a p {{
+    margin: 0;
 }}
 .profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
 
@@ -195,6 +183,30 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
 </style>
 """, unsafe_allow_html=True)
 
+# ── add right after imports in ranking.py ─────────────────────────────
+
+def _get_query_params() -> dict:
+    """Streamlit 최신/구버전 모두에서 쿼리 파라미터 읽기."""
+    try:
+        # Streamlit 1.30+ : st.query_params (MutableMapping[str, str])
+        return {k: v for k, v in st.query_params.items()}
+    except Exception:
+        # 구버전 호환
+        return st.experimental_get_query_params()
+
+def _set_query_params(params: dict) -> None:
+    """Streamlit 최신/구버전 모두에서 쿼리 파라미터 설정."""
+    try:
+        # 최신 API
+        st.query_params.clear()
+        # (우리 코드에선 단일값만 쓰므로 list가 오면 첫 값만)
+        fixed = {k: (v if isinstance(v, str) else (v[0] if isinstance(v, list) and v else ""))
+                 for k, v in params.items()}
+        st.query_params.update(fixed)
+    except Exception:
+        # 구버전 호환
+        st.experimental_set_query_params(**params)
+
 # -------------------- helpers --------------------
 def to_data_uri(abs_path: str) -> str:
     with open(abs_path, "rb") as f:
@@ -202,10 +214,9 @@ def to_data_uri(abs_path: str) -> str:
     return f"data:image/png;base64,{b64}"
 
 def get_char_image_uri(char_key: str | None, hat_id: str | None = None) -> str:
-    if char_key == "ddalkkak" or not char_key:
-        return ("data:image/svg+xml;utf8,"
-                "<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'>"
-                "<text x='50%' y='60%' font-size='96' text-anchor='middle'>🐾</text></svg>")
+    if not char_key:
+        return "data:image/svg+xml;utf8," \
+               "<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><text x='50%' y='60%' font-size='96' text-anchor='middle'>🐾</text></svg>"
     keys = [char_key] + (["siba"] if char_key == "shiba" else [])
     candidates = []
     if hat_id:
@@ -223,63 +234,36 @@ def get_char_image_uri(char_key: str | None, hat_id: str | None = None) -> str:
 
 def _avatar_uri_for_current_user() -> str:
     u = st.session_state.user_data
-    return get_char_image_uri(u.get("active_char"), None)
+    char_key = u.get("active_char")  # None이면 발바닥
+    hat_id = u.get("equipped_hat")
+    if hat_id and (hat_id in u.get("owned_hats", [])):
+        return get_char_image_uri(char_key, hat_id)
+    return get_char_image_uri(char_key, None)
 
-# ---------- query params helpers ----------
-def _get_query_params():
-    try:
-        return dict(st.query_params)  # >= 1.32
-    except Exception:
-        return {k: v[0] if isinstance(v, list) else v
-                for k, v in st.experimental_get_query_params().items()}
-
-def _set_query_params(new_params: dict):
-    try:
-        st.query_params.clear()
-        if new_params:
-            st.query_params.update(new_params)
-    except Exception:
-        st.experimental_set_query_params(**new_params)
-
-# -------------------- header --------------------
+# --- [핵심 수정] 헤더 UI 생성 ---
 header_avatar_uri = _avatar_uri_for_current_user()
-st.markdown(
-    '<div class="top-nav">'
-    '  <div class="nav-left">'
-    '    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>'
-    '    <div class="nav-menu">'
-    '      <div><a href="/mainpage" target="_self">메인페이지</a></div>'
-    '      <div><a href="/main" target="_self">공부 시작</a></div>'
-    '      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>'
-    '      <div><a href="/folder_page" target="_self">저장폴더</a></div>'
-    '      <div><a href="/quiz" target="_self">퀴즈</a></div>'
-    '      <div><a href="/report" target="_self">리포트</a></div>'
-    '      <div><a href="/ranking" target="_self">랭킹</a></div>'
-    '    </div>'
-    '  </div>'
-    f'  <div class="profile-group"><div class="profile-icon" title="내 캐릭터"><img src="{header_avatar_uri}" alt="avatar"/></div></div>'
-    '</div>',
-    unsafe_allow_html=True
-)
+render_header()
 
-# -------------------- 랭킹 데이터 --------------------
-RANK_DATA = [
-    {"name":"소지섭","attempts":16,"points":1600},
-    {"name":"유유유유유윤","attempts":9,"points":980},
-    {"name":"상혁","attempts":8,"points":900},
-    {"name":"똑깡아아야","attempts":8,"points":880},
-    {"name":"민서","attempts":7,"points":720},
-    {"name":"지우","attempts":5,"points":520},
-    {"name":"다온","attempts":4,"points":460},
-    {"name":"크림림","attempts":3,"points":300},
-    {"name":"dbwngus","attempts":2,"points":180},
-]
+
 def sort_by_period(period, data):
     if period == "주간": return sorted(data, key=lambda x: (x["attempts"], x["points"]), reverse=True)
     if period == "월간": return sorted(data, key=lambda x: (x["points"], x["attempts"]), reverse=True)
     return sorted(data, key=lambda x: (x["attempts"]*2 + x["points"]//200), reverse=True)
 
 # -------------------- views --------------------
+def fetch_ranking(period_kor: str):
+    period_map = {"주간": "weekly", "월간": "monthly", "전체": "all"}
+    period = period_map.get(period_kor, "weekly")
+    try:
+        r = requests.get(f"{BACKEND_URL}/ranking/top",
+                         params={"period": period, "limit": 100},
+                         timeout=10)
+        r.raise_for_status()
+        return r.json().get("rows", [])
+    except Exception as e:
+        st.error(f"랭킹을 불러오지 못했습니다: {e}")
+        return []
+
 def view_ranking():
     u = st.session_state.user_data
     left, right = st.columns([3,1], gap="large")
@@ -298,34 +282,36 @@ def view_ranking():
             with col2:
                 search = st.text_input("닉네임 검색", value="", placeholder="닉네임 검색")
 
-        ranked = sort_by_period(period, RANK_DATA)
+        ranked = fetch_ranking(period)
         if search.strip():
             q = search.strip().lower()
-            ranked = [r for r in ranked if q in r["name"].lower()]
+            ranked = [r for r in ranked if q in (r.get("name","").lower())]
 
         avatar_uri = _avatar_uri_for_current_user()
         st.markdown('<div class="card list-card">', unsafe_allow_html=True)
         for i, r in enumerate(ranked, 1):
-            cls = "badge"
+            cls = "badge"; 
             if i == 1: cls += " gold"
             elif i == 2: cls += " silver"
             elif i == 3: cls += " bronze"
+            name = r.get("name","-")
+            attempts = int(r.get("attempts",0))
+            points = int(r.get("points",0))
             st.markdown(
                 '<div class="row">'
                 f'  <div class="left"><div class="{cls}">{i}</div>'
                 f'    <div class="rank-avatar"><img src="{avatar_uri}" alt="avatar"/></div>'
-                f'    <div><div style="font-weight:700">{r["name"]}</div>'
-                f'      <div class="small">출석횟수 {r["attempts"]}회</div></div>'
+                f'    <div><div style="font-weight:700">{name}</div>'
+                f'      <div class="small">출석횟수 {attempts}회</div></div>'
                 f'  </div>'
                 f'  <div style="display:flex; gap:10px; align-items:center;">'
-                f'    <div class="small">출석횟수 {max(1, r["attempts"]//2)}회</div>'
-                f'    <div class="small">⭐ {r["points"]}</div>'
+                f'    <div class="small">출석횟수 {attempts}회</div>'
+                f'    <div class="small">⭐ {points}</div>'
                 f'  </div>'
                 '</div>',
                 unsafe_allow_html=True
             )
         st.markdown('</div>', unsafe_allow_html=True)
-
     with right:
         st.markdown('<div class="side-chip">내 캐릭터</div>', unsafe_allow_html=True)
         active_name = char_kor_name(u.get("active_char") or "")
@@ -345,11 +331,33 @@ def _buy_item(u, price, owned_key, item_id, success_msg, not_enough_msg):
     if u["coins"] >= price:
         u["coins"] -= price
         u.setdefault(owned_key, []).append(item_id)
-        save_user_data()
         st.success(success_msg)
     else:
         st.error(not_enough_msg)
 
+def view_char():
+    u = st.session_state.user_data
+    st.markdown('<div class="panel"><div class="panel-head">내 캐릭터</div><div class="panel-body">', unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1: st.button("📊 랭킹 보기", on_click=lambda: set_mode("ranking"), use_container_width=True)
+    with c2: st.button("🏬 상점 가기", on_click=lambda: set_mode("shop"), use_container_width=True)
+    st.markdown("---")
+    owned_chars = u.get("owned_chars", [])
+    if not owned_chars:
+        st.info("보유한 캐릭터가 없습니다. 상점에서 캐릭터를 구매해주세요!", icon="ℹ️")
+    else:
+        try:
+            active_char_select = st.selectbox("대표 캐릭터 설정", options=owned_chars, format_func=lambda x: f"{'🐻' if x=='bear' else '🐱' if x=='cat' else '🐰' if x=='rabbit' else '🐶'} {x.capitalize()}", index=owned_chars.index(u["active_char"]) if u["active_char"] in owned_chars else 0)
+            if active_char_select != u["active_char"]:
+                u["active_char"] = active_char_select
+                st.success(f"'{active_char_select}' 캐릭터가 대표로 설정되었습니다.")
+                st.rerun()
+        except (ValueError, IndexError):
+             st.warning("캐릭터 설정에 오류가 있습니다. 기본값으로 표시됩니다.")
+    img_uri = _avatar_uri_for_current_user()
+    st.markdown(f"""<div class="card right-note right-note-hero" style="margin-top: 20px;"><div class="hero-circle"><img src="{img_uri}" alt="avatar"/></div><div class="hero-title">{'선택된 캐릭터' if u.get('active_char') else '캐릭터 없음'}</div><div class="hero-sub">상점에서 캐릭터와 아이템을 구매해 꾸며보세요</div></div>""", unsafe_allow_html=True)
+    st.markdown('</div></div>', unsafe_allow_html=True)
+    
 def view_shop():
     u = st.session_state.user_data
 
@@ -383,7 +391,6 @@ def view_shop():
         if use in u.get("owned_chars", []):
             u["active_char"] = use
             set_mode("shop")
-            save_user_data()
             st.success(f"{char_kor_name(use)} 캐릭터 사용 중!")
             qp.pop("use_char", None)
             qp["mode"] = "shop"

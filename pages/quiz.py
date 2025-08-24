@@ -2,53 +2,82 @@
 # -*- coding: utf-8 -*-
 import os, re, json, random, base64
 import streamlit as st
-from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv
 from openai import OpenAI
+from components.header import render_header
+from components.auth import require_login
+from urllib.parse import urlencode
+import requests, hashlib
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 환경변수 로드
-# ─────────────────────────────────────────────────────────────────────────────
-load_dotenv(dotenv_path="C:/Users/user/Desktop/main_project/.env", override=True)
+print(f"✅✅✅ Executing: {__file__} ✅✅✅")
+BACKEND_URL = "http://127.0.0.1:8080"
+
+user = st.session_state.get("user", {}) or {}
+def _extract_backend_uid(u: dict) -> str:
+    cands = [u.get("_id"), u.get("id"), u.get("user_id")]
+    for v in cands:
+        if isinstance(v, dict) and "$oid" in v:
+            return v["$oid"]
+        if isinstance(v, str) and re.fullmatch(r"[0-9a-fA-F]{24}", v):
+            return v
+    return ""  # 못 찾으면 빈 문자열
+
+def _backend_lookup_keys(u: dict) -> list[str]:
+    """포인트 조회 때만 쓰는 키 후보들 (중복 제거, 순서 유지)"""
+    keys: list[str] = []
+
+    def _add(val):
+        if val is None:
+            return
+        s = str(val)
+        if s and s not in keys:
+            keys.append(s)
+
+    # 1) ObjectId (세션 user._id / id / user_id 모두 커버)
+    _add(_extract_backend_uid(u))
+
+    # 2) 로컬 아이디 계열
+    for k in ("local_user_id", "localUserId", "localId"):
+        _add(u.get(k))
+
+    # 3) 프로바이더 아이디 계열
+    for k in ("provider_id", "providerId", "provider"):
+        _add(u.get(k))
+
+    # 4) 일반 id가 24-hex가 아니면 후보로 추가(예: 구글/깃허브 문자열 id)
+    raw_id = u.get("id")
+    if isinstance(raw_id, str) and not re.fullmatch(r"[0-9a-fA-F]{24}", raw_id):
+        _add(raw_id)
+
+    return keys
+
+USER_ID = _extract_backend_uid(user)
+
+if not USER_ID:
+    st.error("세션에 사용자 정보가 없습니다. 다시 로그인해 주세요.")
+    st.switch_page("onboarding.py")
+    st.stop()
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+ENV_PATH = ROOT_DIR / ".env"
+
+loaded = load_dotenv(dotenv_path=ENV_PATH, override=True)
+if not loaded:
+    loaded = load_dotenv(find_dotenv(filename=".env", usecwd=True), override=True)
+
 
 # =========================
-# 페이지 기본 설정
+# 헤더 구현을 위한 유저/에셋 로딩 (세션 데이터 사용)
 # =========================
-st.set_page_config(page_title="🧩 퀴즈", layout="wide", initial_sidebar_state="collapsed")
-
-# =========================
-# (추가) 헤더 구현을 위한 유저/에셋 로딩 — 폴더 페이지와 동일 규격
-# =========================
-USER_JSON_PATH = "user_data.json"
 ASSETS_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets"))
 
-_HDR_DEFAULTS = {
-    "dark_mode": False,
-    "nickname": "-",
-    "coins": 500,
-    "mode": "ranking",
-    "active_char": "rabbit",
-    "owned_hats": [],
-    "equipped_hat": None,
-}
-
-def _hdr_load_user():
-    data = {}
-    if os.path.exists(USER_JSON_PATH):
-        try:
-            with open(USER_JSON_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = {}
-    for k, v in _HDR_DEFAULTS.items():
-        if k not in data: data[k] = v
-    return data
-
-def _hdr_to_data_uri(abs_path: str) -> str:
+def _to_data_uri(abs_path: str) -> str:
     with open(abs_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
     return "data:image/png;base64," + b64
 
-def _hdr_get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
+def _get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
     keys = [char_key] + (["siba"] if char_key == "shiba" else [])
     candidates = []
     if hat_id:
@@ -59,19 +88,17 @@ def _hdr_get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
     for k in keys:
         candidates.append(os.path.join(ASSETS_ROOT, "characters", f"{k}.png"))
     for p in candidates:
-        if os.path.exists(p): return _hdr_to_data_uri(p)
-    return "data:image/svg+xml;utf8," \
-           "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>"
+        if os.path.exists(p): return _to_data_uri(p)
+    return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>"
 
-_hdr_user = _hdr_load_user()
-_hdr_hat = _hdr_user.get("equipped_hat")
-_hdr_avatar_uri = _hdr_get_char_image_uri(
-    _hdr_user.get("active_char","rabbit"),
-    _hdr_hat if (_hdr_hat in _hdr_user.get("owned_hats", [])) else None
+# 세션 데이터 'user'를 사용하도록 수정
+hat = user.get("equipped_hat")
+avatar_uri = _get_char_image_uri(
+    user.get("active_char","rabbit"),
+    hat if (hat in user.get("owned_hats", [])) else None
 )
-
-# 테마 변수
-dark = bool(_hdr_user.get("dark_mode", False))
+# 테마 변수 (폴더 페이지와 동일 논리)
+dark = user.get("dark_mode", False)
 if dark:
     bg_color = "#1C1C1E"; font_color = "#F2F2F2"
     card_bg = "#2C2C2E"; nav_bg = "#2C2C2E"
@@ -101,7 +128,7 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
 
 /* 헤더 */
 a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
-.container {{ max-width:1200px; margin:auto; padding:0 40px 16px; }}  /* 상단 패딩 0 */
+.container {{ max-width:1200px; margin:auto; padding:4px 40px 24px; }}
 .top-nav {{
   display:flex; justify-content:space-between; align-items:center;
   padding:12px 0; margin-top:40px !important; margin-bottom:0 !important;
@@ -133,6 +160,25 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 .top-tabs a.tab {{ padding:0 2px 12px; font-weight:900; font-size:20px; color:{tab_inactive}; }}
 .top-tabs a.tab.active {{ color:{tab_active}; border-bottom:4px solid {tab_active}; }}
 .top-tabs a.tab:hover {{ color:{tab_active}; }}
+
+/* --- 버튼 기반 탭바 (f-string 안전 버전) --- */
+.tabbar{{
+  display:flex; align-items:flex-end; gap:24px;
+  border-bottom:1px solid {tab_border}; margin:6px 0 14px;
+  background:{nav_bg};
+}}
+.tabbar .tab{{ display:inline-block; }}
+
+.tabbar .tab .stButton>button{{
+  background:transparent !important; color:{tab_inactive} !important;
+  border:0 !important; border-bottom:3px solid transparent !important;
+  border-radius:0 !important; padding:10px 2px !important;
+  font-weight:900 !important; font-size:20px !important; box-shadow:none !important;
+}}
+.tabbar .tab .stButton>button:hover{{ color:{tab_active} !important; }}
+.tabbar .tab.active .stButton>button{{
+  color:{tab_active} !important; border-bottom-color:{tab_active} !important;
+}}
 
 /* 섹션/카드 및 퀴즈 UI (기존) */
 .section-wrap{{ background:transparent!important; border:0!important; box-shadow:none!important; padding:0!important; border-radius:0!important; display:flex; flex-direction:column; }}
@@ -196,25 +242,7 @@ label {{ font-weight:700; }}
 """, unsafe_allow_html=True)
 
 # ===== 헤더 =====
-st.markdown(f"""
-<div class="top-nav">
-  <div class="nav-left">
-    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
-    <div class="nav-menu">
-      <div><a href="/mainpage" target="_self">메인페이지</a></div>
-      <div><a href="/main" target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
-      <div><a href="/folder_page" target="_self">저장폴더</a></div>
-      <div><a href="/quiz" target="_self">퀴즈</a></div>
-      <div><a href="/report" target="_self">리포트</a></div>
-      <div><a href="/ranking" target="_self">랭킹</a></div>
-    </div>
-  </div>
-  <div class="profile-group">
-    <div class="profile-icon" title="내 캐릭터"><img src="{_hdr_avatar_uri}" alt="avatar"/></div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+render_header()
 
 # =========================
 # OpenAI 클라이언트 (기존 이름 유지)
@@ -481,16 +509,65 @@ st.markdown('<div class="panel"><div class="panel-body">', unsafe_allow_html=Tru
 # ─────────────────────────────────────────────────────────────────────────────
 # 탭바 (퀴즈 생성 / 배팅 퀴즈 생성) — 사진 스타일
 # ─────────────────────────────────────────────────────────────────────────────
-_active = st.session_state.quiz_view
-st.markdown(
-    f"""
-    <div class="top-tabs">
-      <a class="tab {'active' if _active=='quiz' else ''}" href="/quiz?tab=quiz" target="_self">퀴즈 생성</a>
-      <a class="tab {'active' if _active=='bet' else ''}"  href="/quiz?tab=bet"  target="_self">배팅 퀴즈 생성</a>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+try:
+    _qp = st.query_params
+except Exception:
+    _qp = st.experimental_get_query_params()
+
+_qp_dict = dict(_qp)
+
+def _first(v):
+    return v[0] if isinstance(v, list) else v
+
+_token = _first(_qp_dict.get("token"))
+if "auth_token" not in st.session_state and _token:
+    st.session_state["auth_token"] = _token
+_token = _token or st.session_state.get("auth_token")
+
+def _set_tab_and_rerun(name: str):
+    # 기존 파라미터 유지 + tab만 변경
+    st.query_params["tab"] = name
+    # token 유지
+    if _token:
+        st.query_params["token"] = _token
+    st.rerun()
+
+# 탭 전환 시 현재 뷰 기억해서 필요 시 초기화
+_prev = st.session_state.get("_last_tab_quiz")
+_cur  = st.session_state.get("quiz_view", "quiz")
+if _prev is None:
+    st.session_state["_last_tab_quiz"] = _cur
+elif _prev != _cur:
+    # 탭을 바꿨으면 해당 탭은 setup부터 시작하게만 리셋 (데이터는 보존)
+    if _cur == "quiz":
+        st.session_state.quiz_stage = "setup"
+    else:
+        st.session_state.bet_stage = "setup"
+    st.session_state["_last_tab_quiz"] = _cur
+
+# 렌더
+st.markdown('<div class="tabbar">', unsafe_allow_html=True)
+col1, col2 = st.columns([1,1], gap="small")
+
+with col1:
+    st.markdown(
+        f"<div class='tab {'active' if st.session_state.get('quiz_view','quiz')=='quiz' else ''}'>",
+        unsafe_allow_html=True
+    )
+    if st.button("퀴즈 생성", key="go_quiz_tab"):
+        _set_tab_and_rerun("quiz")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with col2:
+    st.markdown(
+        f"<div class='tab {'active' if st.session_state.get('quiz_view','quiz')=='bet' else ''}'>",
+        unsafe_allow_html=True
+    )
+    if st.button("배팅 퀴즈 생성", key="go_bet_tab"):
+        _set_tab_and_rerun("bet")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SETUP 화면 렌더러 (기존 함수/키 그대로 사용)
@@ -550,18 +627,32 @@ def _render_setup_bet():
       </div>
     </div>
     """, unsafe_allow_html=True)
-    st.number_input("배팅 포인트", min_value=0, max_value=max(0, st.session_state.user_points),
-                    value=min(100, st.session_state.user_points), step=5, key="bet_points_input",
-                    help="현재 보유 포인트 범위 내에서 배팅할 값을 입력하세요.")
+    st.number_input(
+        "배팅 포인트",
+        min_value=1,
+        max_value=max(1, st.session_state.user_points),
+        value=min(100, max(1, st.session_state.user_points)),
+        step=1,
+        key="bet_points_input",
+        help="현재 보유 포인트 범위 내에서 배팅할 값을 입력하세요."
+    )
     st.text_area("✍️ (퀴즈 생성) 학습 내용을 입력하세요", value="", height=140, key="bet_content_input")
     st.markdown('<div class="primary-btn">', unsafe_allow_html=True)
-    bet_btn = st.button("배팅 퀴즈 생성하기", key="make_bet_quiz", use_container_width=True)
+    bet_btn = st.button(
+        "배팅 퀴즈 생성하기",
+        key="make_bet_quiz",
+        use_container_width=True,
+        disabled=(st.session_state.user_points <= 0)  # ✅ 포인트 없으면 불가
+    )
+    if st.session_state.user_points <= 0:
+        st.warning("포인트가 없어 베팅을 이용할 수 없습니다.")
     st.markdown('</div>', unsafe_allow_html=True)
 
     if bet_btn:
         content_to_use = (st.session_state.get("bet_content_input","") or "").strip()
         bet_points = int(st.session_state.get("bet_points_input", 0))
-        can_bet = (st.session_state.user_points > 0) and (bet_points > 0) and (bet_points <= st.session_state.user_points)
+        can_bet = (st.session_state.user_points > 0) and (bet_points >= 1) and (bet_points <= st.session_state.user_points)
+
         if not content_to_use:
             st.warning("배팅 퀴즈용 내용을 입력해주세요.")
         elif not can_bet:
@@ -572,15 +663,19 @@ def _render_setup_bet():
                 if not data or len(data) != 10:
                     st.error("배팅 퀴즈 생성에 실패했어요. 내용을 조금 더 길게 입력해보세요.")
                 else:
-                    st.session_state.bet_summary_log = summarize_content(content_to_use)  # 요약 저장 (배팅 컨텍스트)
+                    st.session_state.bet_summary_log = summarize_content(content_to_use)
                     st.session_state.bet_quiz_data    = data
                     st.session_state.bet_user_answers = {}
                     st.session_state.bet_current_idx  = 0
                     st.session_state.bet_score        = 0
                     st.session_state.bet_goal         = 7
-                    st.session_state.bet_points_at_stake = int(bet_points)
-                    st.session_state.bet_stage = "play"
-                    st.rerun()
+                    # 🔗 서버에 'bet/start' 요청 (선차감 + 퀴즈 저장)
+                    quiz_items = _build_quiz_items_from_gen(data)
+                    if _bet_start_backend(bet_points, quiz_items, st.session_state.bet_summary_log, content_to_use):
+                        st.success("베팅을 시작했어요! (포인트 선차감 완료)")
+                        st.session_state.bet_stage = "play"
+                        st.rerun()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 정답 판정
@@ -594,6 +689,55 @@ def _is_correct(user, answer):
     if isinstance(a_, list): return u_ in a_
     return u_ == a_
 
+def _build_quiz_payload_normal(include_answers: bool = False):
+    """일반 퀴즈 저장용 페이로드 생성 (is_correct: 틀림/미답변 모두 False)."""
+    qlist  = st.session_state.get("quiz_data", []) or []
+    ua_map = st.session_state.get("user_answers", {}) or {}
+    items = []
+
+    for i, q in enumerate(qlist):
+        ua = ua_map.get(i, None)
+
+        # 기본 False (오답/미답변 모두 False)
+        ic = False
+        if include_answers and ua not in (None, "", []):
+            try:
+                ic = bool(_is_correct(ua, q.get("answer", "")))
+            except Exception:
+                ic = False
+
+        item = {
+            "type": q.get("type", ""),
+            "quiz_text": q.get("question", ""),
+            "answer": q.get("answer", ""),
+            "choices": q.get("options", []) or (["O","X"] if q.get("type")=="OX" else [])
+        }
+        if include_answers:
+            item["user_answer"] = ua
+            item["is_correct"] = ic  # ✅ 미답변/오답 False
+
+        items.append(item)
+
+    return {
+        "quiz_type": "일반",                      # ✅ 일반 퀴즈로 표기
+        "quiz": items,
+        "bet_point": 0,
+        "reward_point": 0,
+        "source": {"from": "manual_input"},      # ✅ 사용자가 직접 입력
+        "summary_preview": (st.session_state.get("summary_log") or "")[:400]
+    }
+
+def _save_quiz_to_backend_normal(include_answers: bool = True):
+    payload = _build_quiz_payload_normal(include_answers=include_answers)
+    try:
+        res = requests.post(f"{BACKEND_URL}/quizzes/{USER_ID}", json=payload, timeout=15)
+        res.raise_for_status()
+        st.session_state["saved_quiz_id"] = (res.json() or {}).get("inserted_id")
+        return True
+    except requests.exceptions.RequestException as e:
+        st.session_state["save_error"] = str(e)
+        return False
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 플레이 렌더러 (기존 유지)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -604,6 +748,13 @@ def _render_player_generic(kind="normal"):
         idx   = st.session_state.get("current_idx", 0)
         ans_store = "user_answers"
         title = "퀴즈 풀기"
+
+        if st.button("💾 퀴즈 세트 저장하기", key="save_quiz_set_normal"):
+            ok = _save_quiz_to_backend_normal(include_answers=True)
+            if ok:
+                st.success(f"퀴즈 세트를 저장했습니다. id = {st.session_state.get('saved_quiz_id')}")
+            else:
+                st.error(f"퀴즈 저장 실패: {st.session_state.get('save_error')}")
     else:
         qlist = st.session_state.get("bet_quiz_data")
         if not qlist: return
@@ -681,14 +832,20 @@ def _render_player_generic(kind="normal"):
                 if kind=="normal":
                     st.session_state.score  = score
                     st.session_state.graded = True
+                    _ = _save_quiz_to_backend_normal(include_answers=True)
                     st.session_state.quiz_stage = "result"
                 else:
                     st.session_state.bet_score = score
-                    st.session_state.bet_stage = "result"
+                    # ✅ 서버 정산 호출
+                    if _bet_finish_backend():
+                        st.session_state.bet_stage = "result"
+                    else:
+                        return  # 정산 실패 시 결과 페이지로 이동 안 함
                 st.rerun()
 
     st.markdown('</div></div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 라우팅 (탭 상태 사용)
@@ -777,23 +934,112 @@ if view == "quiz":
         st.markdown('</div>', unsafe_allow_html=True)
 
 elif view == "bet":
+    def fetch_user_points():
+        def _extract_points(p):
+            if not isinstance(p, dict): return None
+            for k in ("points", "balance", "point"):
+                if k in p:
+                    try: return int(p[k])
+                    except: pass
+            for nest in ("data", "user", "result"):
+                if isinstance(p.get(nest), dict):
+                    v = _extract_points(p[nest])
+                    if isinstance(v, int): return v
+            return None
+
+        last_err = None
+        # ObjectId → local_user_id → provider_id 순서로 시도
+        for key in _backend_lookup_keys(user):
+            try:
+                r = requests.get(f"{BACKEND_URL}/quizzes/points/{key}", timeout=10)
+                if r.status_code == 404:
+                    continue  # 이 키로는 유저 못 찾음 → 다음 키
+                r.raise_for_status()
+
+                payload = r.json() or {}
+
+                pts = _extract_points(payload)
+                if pts is None:
+                    pts = int(user.get("points") or 0)
+
+                st.session_state.user_points = max(0, int(pts))
+                st.session_state["_points_key_used"] = key
+                return
+            except requests.exceptions.RequestException as e:
+                last_err = e
+                continue
+
+        # 모든 키 실패 → 세션 값 fallback
+        st.warning("포인트 조회 실패: 세션의 user.points 값을 사용합니다.")
+        st.session_state.user_points = int(user.get("points") or 0)
+        if last_err:
+            st.caption(f"last error: {last_err}")
+    def _build_quiz_items_from_gen(data):
+        items = []
+        for q in data:
+            items.append({
+                "type": q.get("type",""),
+                "quiz_text": q.get("question",""),
+                "answer": q.get("answer",""),
+                "choices": q.get("options", []) or (["O","X"] if q.get("type")=="OX" else []),
+                "user_answer": "",        # 초기 상태
+                "is_correct": False
+            })
+        return items
+
+    def _bet_start_backend(bet_points: int, quiz_items: list, summary_preview: str, content_raw: str):
+        payload = {
+            "bet_point": int(bet_points),
+            "quiz": quiz_items,
+            "source": {"from": "manual_input"},
+            "summary_preview": (summary_preview or "")[:400],
+            "content_hash": hashlib.sha1((content_raw or "").strip().encode("utf-8")).hexdigest()
+        }
+        try:
+            r = requests.post(f"{BACKEND_URL}/quizzes/bet/start/{USER_ID}", json=payload, timeout=20)
+            r.raise_for_status()
+            data = r.json() or {}
+            st.session_state.bet_quiz_id = data.get("quiz_id")
+            st.session_state.user_points = int(data.get("balance", st.session_state.user_points))
+            st.session_state.bet_points_at_stake = int(bet_points)
+            return True
+        except requests.exceptions.RequestException as e:
+            st.error(f"베팅 시작 실패: {e}")
+            return False
+
+    def _bet_finish_backend():
+        qlist = st.session_state.get("bet_quiz_data", []) or []
+        ans_map = st.session_state.get("bet_user_answers", {}) or {}
+        answers = [ans_map.get(i, "") for i in range(len(qlist))]
+        try:
+            r = requests.post(
+                f"{BACKEND_URL}/quizzes/bet/finish/{USER_ID}/{st.session_state.get('bet_quiz_id')}",
+                json={"answers": answers}, timeout=30
+            )
+            r.raise_for_status()
+            data = r.json() or {}
+            st.session_state.user_points = int(data.get("balance", st.session_state.user_points))
+            st.session_state.bet_settlement = data
+            return True
+        except requests.exceptions.RequestException as e:
+            st.error(f"베팅 정산 실패: {e}")
+            return False
+
     if st.session_state.bet_stage == "setup":
+        fetch_user_points()
         _render_setup_bet()
     elif st.session_state.bet_stage == "play":
         _render_player_generic("bet")
     elif st.session_state.bet_stage == "result":
         qlist = st.session_state.get("bet_quiz_data", [])
-        total = len(qlist)
-        score = st.session_state.get("bet_score", 0)
-        ratio = (score / total) if total else 0.0
-        goal  = st.session_state.get("bet_goal", 7)
-        stake = int(st.session_state.get("bet_points_at_stake", 0))
-
-        won = score >= goal
-        delta = int(round(stake * 1.25)) if won else -stake
-        if "bet_result_applied" not in st.session_state:
-            st.session_state.user_points = max(0, st.session_state.user_points + delta)
-            st.session_state.bet_result_applied = True
+        settle = st.session_state.get("bet_settlement", {}) or {}
+        total = len(qlist) 
+        score  = int(settle.get("score", 0))
+        won    = bool(settle.get("won", False))
+        delta  = int(settle.get("delta", 0))      # 지급된 보상(성공 시만)
+        goal   = st.session_state.get("bet_goal", 7)
+        pct    = int((score / 10) * 100)
+        stake  = int(settle.get("bet_point", st.session_state.get("bet_points_at_stake", 0)))  # ✅ 추가
 
         st.markdown('<div class="section-wrap">', unsafe_allow_html=True)
         st.markdown('<div class="section-head"><div>배팅 퀴즈 결과</div><div class="pill">{:d} P</div></div>'.format(st.session_state.user_points), unsafe_allow_html=True)
@@ -807,22 +1053,21 @@ elif view == "bet":
             if _is_correct(answers.get(i,""), qq.get("answer","")):
                 by_ok[t] = by_ok.get(t,0) + 1
 
-        banner = f"🎉 성공! +{delta}P" if won else f"😢 실패… {abs(delta)}P 소멸"
-        pct = int(ratio * 100)
+        banner = f"🎉 성공! +{delta}P" if won else "😢 실패… (배팅금 소멸)"
         st.markdown(
             f"""
             <div class="result-wrap">
-              <div class="result-hero" style="--pct:{pct};">
-                <div class="score-ring"><span class="score">{score} / {total}</span></div>
+            <div class="result-hero" style="--pct:{pct};">
+                <div class="score-ring"><span class="score">{score} / 10</span></div>
                 <div class="comment" style="font-weight:900;">{banner} (목표 {goal}개)</div>
-              </div>
-              <div class="chip-row">
+            </div>
+            <div class="chip-row">
                 <div class="chip">OX<br><span>{by_ok.get('OX',0)} / {by_tot.get('OX',0)}</span></div>
                 <div class="chip">객관식<br><span>{by_ok.get('객관식',0)} / {by_tot.get('객관식',0)}</span></div>
                 <div class="chip red">단답형<br><span>{by_ok.get('단답형',0)} / {by_tot.get('단답형',0)}</span></div>
-              </div>
-              <div class="meter"><div style="width:{pct}%"></div></div>
-              <div class="subtle" style="text-align:center;margin-top:8px;">다음 배팅을 위해 상단 카드에서 포인트와 내용을 입력하세요.</div>
+            </div>
+            <div class="meter"><div style="width:{pct}%"></div></div>
+            <div class="subtle" style="text-align:center;margin-top:8px;">다음 배팅을 위해 상단 카드에서 포인트와 내용을 입력하세요.</div>
             </div>
             """,
             unsafe_allow_html=True

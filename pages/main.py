@@ -1,3 +1,4 @@
+# pages/main.py
 # -*- coding: utf-8 -*-
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer
@@ -7,6 +8,21 @@ import os, json, time, base64
 from collections import deque
 from datetime import datetime
 import math
+from components.header import render_header
+import requests
+from components.auth import require_login
+
+print(f"✅✅✅ Executing: {__file__} ✅✅✅")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8080")
+require_login(BACKEND_URL)
+
+user = st.session_state.get("user", {}) or {}
+USER_ID = user.get("id") or user.get("_id") or user.get("user_id") or ""
+
+if not USER_ID:
+    st.error("세션에 사용자 정보가 없습니다. 다시 로그인해 주세요.")
+    st.switch_page("onboarding.py")
+    st.stop()
 
 # === 성능 튜닝(가급적 최상단) ===
 cv2.setNumThreads(1)   # OpenCV 내부 스레드 경합 줄이기
@@ -19,15 +35,6 @@ except Exception as e:
     st.stop()
 
 # ===== 페이지/테마 세팅 =====
-st.set_page_config(page_title="딸깍공 - 공부 집중모드 (YOLO 기반)", layout="wide", initial_sidebar_state="collapsed")
-
-if "user_data" not in st.session_state:
-    if os.path.exists("user_data.json"):
-        with open("user_data.json", "r", encoding="utf-8") as f:
-            st.session_state.user_data = json.load(f)
-    else:
-        st.session_state.user_data = {"dark_mode": False, "coins": 500}
-
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = st.session_state.user_data.get("dark_mode", False)
 
@@ -47,41 +54,12 @@ accent_orange = "#FF9330"   # 포인트 컬러
 # =========================
 # (추가) 헤더 아바타 로딩 (퀴즈/저장폴더와 동일 기능)
 # =========================
-HDR_USER_JSON_PATH = "user_data.json"
-
-_HDR_DEFAULTS = {
-    "dark_mode": False,
-    "nickname": "-",
-    "coins": 500,
-    "mode": "ranking",
-    "active_char": "rabbit",
-    "owned_hats": [],
-    "equipped_hat": None,
-}
-
-def _hdr_load_user():
-    data = {}
-    if os.path.exists(HDR_USER_JSON_PATH):
-        try:
-            with open(HDR_USER_JSON_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = {}
-    for k, v in _HDR_DEFAULTS.items():
-        if k not in data: data[k] = v
-    return data
-
 def _hdr_resolve_assets_root():
     here = os.path.dirname(__file__)
-    cands = [
-        os.path.abspath(os.path.join(here, "assets")),
-        os.path.abspath(os.path.join(here, "..", "assets")),
-    ]
+    cands = [os.path.abspath(os.path.join(here, "assets")), os.path.abspath(os.path.join(here, "..", "assets"))]
     for p in cands:
-        if os.path.isdir(p):
-            return p
+        if os.path.isdir(p): return p
     return cands[0]
-
 _HDR_ASSETS_ROOT = _hdr_resolve_assets_root()
 
 def _hdr_to_data_uri(abs_path: str) -> str:
@@ -106,12 +84,7 @@ def _hdr_get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
             "<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'>"
             "<text x='50%' y='60%' font-size='28' text-anchor='middle'>🐾</text></svg>")
 
-_hdr_user = _hdr_load_user()
-_hdr_hat = _hdr_user.get("equipped_hat")
-header_avatar_uri = _hdr_get_char_image_uri(
-    _hdr_user.get("active_char", "rabbit"),
-    _hdr_hat if (_hdr_hat in _hdr_user.get("owned_hats", [])) else None
-)
+header_avatar_uri = _hdr_get_char_image_uri(user.get("active_char", "rabbit"))
 
 # ===== 스타일 =====
 st.markdown(f"""
@@ -128,29 +101,6 @@ html, body {{
 .block-container {{ padding-top: 0 !important; }}
 .container {{ max-width: 1200px; margin: auto; padding: 40px; }}
 a {{ text-decoration: none !important; color: {font_color}; }}
-
-/* ── 헤더(저장폴더/퀴즈와 동일 규격) ─────────────────────────── */
-header {{ display: none !important; }}
-a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
-.top-nav {{
-  display:flex; justify-content:space-between; align-items:center;
-  padding:12px 0; margin-top:-40px !important; margin-bottom:0 !important; /* 컨테이너 padding(40) 상쇄 */
-  background:{nav_bg};
-  box-shadow:0 2px 4px rgba(0,0,0,.05);
-}}
-.nav-left {{ display:flex; align-items:center; gap:60px; }}
-.top-nav .nav-left > div:first-child a {{ color:#000 !important; font-size:28px; font-weight:900; }}
-.nav-menu {{ display:flex; gap:36px; font-size:18px; font-weight:700; }}
-.nav-menu div a {{ color:#000 !important; transition:.2s; }}
-.nav-menu div:hover a {{ color:#FF9330 !important; }}
-.profile-group {{ display:flex; gap:16px; align-items:center; margin-right:12px; }}
-.profile-icon {{
-  width:36px; height:36px; border-radius:50%;
-  background:linear-gradient(135deg,#DDEFFF,#F8FBFF);
-  overflow:hidden; display:flex; align-items:center; justify-content:center;
-  box-shadow:0 1px 2px rgba(0,0,0,.06);
-}}
-.profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
 
 /* [UI] 공통 카드/패널 */
 .card {{
@@ -215,29 +165,53 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 
 # ── 헤더 (저장폴더/퀴즈와 동일 구조 & 캐릭터 표시) ──
 st.markdown('<div class="container">', unsafe_allow_html=True)
-st.markdown(f"""
-<div class="top-nav">
-  <div class="nav-left">
-    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
-    <div class="nav-menu">
-      <div><a href="/mainpage"   target="_self">메인페이지</a></div>
-      <div><a href="/main"       target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
-      <div><a href="/folder_page" target="_self">저장폴더</a></div>
-      <div><a href="/quiz"       target="_self">퀴즈</a></div>
-      <div><a href="/report"     target="_self">리포트</a></div>
-      <div><a href="/ranking"    target="_self">랭킹</a></div>
-    </div>
-  </div>
-  <div class="profile-group">
-    <div class="profile-icon" title="내 캐릭터"><img src="{header_avatar_uri}" alt="avatar"/></div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+render_header()
+
+st.session_state.setdefault("user_data", {})
+st.session_state.user_data.setdefault("todo_items", [])
+
+# TODOS 서버 연동 헬퍼
+def fetch_today_todos():
+    """오늘 할 일 목록을 서버에서 받아와 세션에 반영."""
+    try:
+        r = requests.get(f"{BACKEND_URL}/todos/{USER_ID}", timeout=10)
+        r.raise_for_status()
+        items = r.json()
+        st.session_state.user_data["todo_items"] = [
+            {"id": t["id"], "text": t["contents"], "done": t["complete"]}
+            for t in items
+        ]
+    except requests.exceptions.RequestException as e:
+        st.session_state.user_data.setdefault("todo_items", [])
+        st.error(f"오늘 할 일 불러오기 실패: {getattr(e, 'response', None) and e.response.text or e}")
+
+def toggle_goal(todo_id: str, idx: int, new_val: bool):
+    """완료 여부 토글."""
+    try:
+        requests.put(f"{BACKEND_URL}/todos/toggle/{USER_ID}/{todo_id}", timeout=10).raise_for_status()
+        st.session_state.user_data["todo_items"][idx]["done"] = new_val
+    except requests.exceptions.RequestException:
+        st.error("상태 변경 실패")
+
+# 첫 진입 시 한 번만 오늘 목록 동기화
+if not st.session_state.user_data.get("_today_loaded_main"):
+    fetch_today_todos()
+    st.session_state.user_data["_today_loaded_main"] = True
+
+# ===== 세션 시작: 백엔드로 생성 =====
+def ensure_session_started():
+    if st.session_state.get("study_session_id"):
+        return
+    try:
+        r = requests.post(f"{BACKEND_URL}/study/sessions/start/{USER_ID}", timeout=5)
+        r.raise_for_status()
+        st.session_state.study_session_id = r.json()["session_id"]
+    except requests.exceptions.RequestException as e:
+        st.error(f"세션 시작 실패: {e}")
+
+ensure_session_started()
 
 # ======== YOLO 모델/상수 ========
-USER_ID = "user01"
-USER_DATA_PATH = f"user_yawn_data_{USER_ID}.json"
 MODEL_PATH = "runs/detect/train24-mixtrain/weights/best.pt"
 YAWN_CLASS_INDEX = 2       # 하품
 DROWSY_CLASS_INDEX = 3     # 졸음
@@ -258,48 +232,41 @@ def load_model():
 model = load_model()
 
 # ======== 세션 상태(분석용) ========
-def _load_user_data():
-    if os.path.exists(USER_DATA_PATH):
-        try:
-            with open(USER_DATA_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            pass
-    return {
-        "threshold_ratio": 0.4,
-        "min_duration_sec": 0.5,
-        "avg_yawn_duration": 1.0,
-        "yawn_events": [],
-        "sleep_events": []
-    }
-
-def _save_user_data(data):
+# ===== 사용자 하품 가중치(평균 하품 시간) 불러오기 =====
+def get_user_yawn_weight() -> float | None:
     try:
-        with open(USER_DATA_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-    except Exception:
+        r = requests.get(f"{BACKEND_URL}/study/users/{USER_ID}/yawn-weight", timeout=5)
+        r.raise_for_status()
+        data = r.json() or {}
+        val = data.get("avg_yawn")
+        if isinstance(val, (int, float)) and val > 0:
+            return float(val)
+    except requests.exceptions.RequestException:
         pass
+    return None
 
 if "analytics" not in st.session_state:
-    user_data = _load_user_data()
     window_seconds = 3
     window_size = int(TARGET_FPS * window_seconds)
     drowsy_seconds = 2
     drowsy_frames = int(TARGET_FPS * drowsy_seconds)
 
+    if "user_yawn_weight" not in st.session_state:
+        st.session_state.user_yawn_weight = get_user_yawn_weight()
+    avg_base = float(st.session_state.user_yawn_weight or 1.0)
+
     st.session_state.analytics = {
-        "user_data": user_data,
-        "yawn_events": user_data.get("yawn_events", []),
-        "sleep_events": user_data.get("sleep_events", []),
-        "initial_yawn_len": len(user_data.get("yawn_events", [])),
-        "initial_sleep_len": len(user_data.get("sleep_events", [])),
+        "yawn_events": [],
+        "sleep_events": [],
+        "initial_yawn_len": 0,
+        "initial_sleep_len": 0,
         "BASE_ATTENTION": 100,
         "yawn_window": deque(maxlen=window_size),
         "weights": [i / window_size for i in range(1, window_size + 1)],
         "drowsy_window": deque(maxlen=drowsy_frames),
-        "threshold_ratio": float(user_data.get("threshold_ratio", 0.4)),
-        "avg_yawn_duration": float(user_data.get("avg_yawn_duration", 1.0)),
-        "min_yawn_duration": int(TARGET_FPS * max(0.6, min(user_data.get("avg_yawn_duration", 1.0) * 0.9, 2.0))),
+        "threshold_ratio": 0.4,
+        "avg_yawn_duration": avg_base,
+        "min_yawn_duration": int(TARGET_FPS * max(0.6, min(avg_base * 0.9, 2.0))),
         "yawning": False,
         "sleeping": False,
         "yawn_start_time": None,
@@ -315,9 +282,65 @@ if "analytics" not in st.session_state:
         # 히스테리시스
         "threshold_ratio_on": 0.45,
         "threshold_ratio_off": 0.35,
+        # 백엔드 전송용 포인터
+        "last_flushed_yawn_len": 0,
+        "last_flushed_sleep_len": 0,
+        "last_flush_ts": 0.0,
     }
 
 A = st.session_state.analytics
+
+# 사용자 가중치가 있으면 초기 평균에 반영(기존 평균 갱신 로직 유지)
+if st.session_state.user_yawn_weight:
+    A["durations"].append(st.session_state.user_yawn_weight)
+
+def flush_events(force: bool = False):
+    sid = st.session_state.get("study_session_id")
+    if not sid:
+        return
+    now_ts = time.time()
+    if not force and (now_ts - A["last_flush_ts"] < 5.0):
+        return
+
+    # 새로 쌓인 이벤트만 잘라서 보냄
+    ys = A["yawn_events"][A["last_flushed_yawn_len"]:]
+    ss = A["sleep_events"][A["last_flushed_sleep_len"]:]
+    if not ys and not ss and not force:
+        return
+
+    payload = {"yawn_events": ys, "sleep_events": ss}
+    try:
+        requests.post(
+            f"{BACKEND_URL}/study/sessions/{sid}/events/batch",
+            json=payload, timeout=5
+        ).raise_for_status()
+        A["last_flushed_yawn_len"] = len(A["yawn_events"])
+        A["last_flushed_sleep_len"] = len(A["sleep_events"])
+        A["last_flush_ts"] = now_ts
+    except requests.exceptions.RequestException as e:
+        # 실패 시 다음 주기 재시도
+        print("flush_events error:", e)
+
+def finish_session():
+    sid = st.session_state.get("study_session_id")
+    if not sid:
+        return
+    try:
+        # 남은 이벤트 모두 밀어넣기
+        flush_events(force=True)
+
+        body = {
+            "focus_score": float(st.session_state.get("focus_score", 0)),
+            "yawn_count": sum(1 for e in A["yawn_events"] if e.get("type") == "yawn_end"),
+            "avg_yawn": float(A.get("avg_yawn_duration") or 0),
+            "sum_study_time": float(st.session_state.get("total_study_sec", 0.0)),
+        }
+        requests.post(
+            f"{BACKEND_URL}/study/sessions/finish/{USER_ID}/{sid}",
+            json=body, timeout=5
+        ).raise_for_status()
+    except requests.exceptions.RequestException as e:
+        st.error(f"세션 종료 저장 실패: {e}")
 
 # ======== 뽀모도로/집중도 기본 ========
 if "start_camera" not in st.session_state:
@@ -369,6 +392,26 @@ def start_break(seconds=300, reason="manual"):
     ss.low_focus_since = None
     ss.last_break_reason = reason
     ss.show_break_alert = (reason == "pomodoro")
+    sid = ss.get("study_session_id")
+    if sid:
+        api_reason = "focus_drop" if reason == "low_focus" else reason
+        try:
+            r = requests.post(
+                f"{BACKEND_URL}/study/sessions/{sid}/breaks/start",
+                json={
+                    "reason": api_reason,
+                    "focus_score": float(ss.get("focus_score", 0)),
+                },
+                timeout=5,
+            )
+            if r.status_code == 409:
+                # 이미 열린 break가 있으면 무시 (백엔드에서 409 반환)
+                pass
+            else:
+                r.raise_for_status()
+                ss.open_break_id = r.json().get("break_id")
+        except requests.exceptions.RequestException as e:
+            print("break start error:", e)
 
 def end_break():
     ss = st.session_state
@@ -378,6 +421,21 @@ def end_break():
     ss.pomodoro_duration = 25 * 60
     ss.pomodoro_start = time.time()
     ss.show_start_alert = True
+    sid = ss.get("study_session_id")
+    if sid:
+        try:
+            requests.post(
+                f"{BACKEND_URL}/study/sessions/{sid}/breaks/end",
+                json={
+                    "break_id": ss.get("open_break_id"),
+                    "focus_score": float(ss.get("focus_score", 0)),
+                },
+                timeout=5,
+            ).raise_for_status()
+        except requests.exceptions.RequestException as e:
+            print("break end error:", e)
+        finally:
+            ss.open_break_id = None
 
 # ======== 뽀모도로 업데이트 ========
 def update_pomodoro():
@@ -531,28 +589,24 @@ with col1:
     st.markdown('<div class="right-pane">', unsafe_allow_html=True)
     st.markdown('<div style="height:56px;"></div>', unsafe_allow_html=True)
 
-    st.markdown(
-        '''
-        <div class="soft-bg" style="padding:16px 18px; margin-bottom:12px;">
-        <div class="badge-head">📌 오늘의 목표</div>
-        <ul style="margin:12px 0 0 0; font-size:1.12rem; list-style:none; padding-left:0;">
-            <li class="goal-item" style="margin:10px 0 8px 0;">
-            <input class="goal-check" type="checkbox" id="goal_rev">
-            <label class="goal-label" for="goal_rev">단원 복습</label>
-            </li>
-            <li class="goal-item" style="margin:8px 0;">
-            <input class="goal-check" type="checkbox" id="goal_prob">
-            <label class="goal-label" for="goal_prob">문제 풀이</label>
-            </li>
-            <li class="goal-item" style="margin:0;">
-            <input class="goal-check" type="checkbox" id="goal_mem">
-            <label class="goal-label" for="goal_mem">암기 테스트</label>
-            </li>
-        </ul>
-        </div>
-        ''',
-        unsafe_allow_html=True
-    )
+    st.markdown('<div class="soft-bg" style="padding:16px 18px; margin-bottom:12px;">'
+                '<div class="badge-head">📌 오늘의 목표</div>',
+                unsafe_allow_html=True)
+
+    # 3-1) 목록 + 토글
+    todos = st.session_state.user_data.get("todo_items", [])
+    if not todos:
+        st.caption("오늘 등록된 목표가 없습니다.")
+
+    for i, item in enumerate(todos):
+        # 체크 토글
+        checked = st.checkbox(
+            item["text"], value=item["done"], key=f"goal_chk_{item['id']}"
+        )
+        if checked != item["done"]:
+            toggle_goal(item["id"], i, checked)
+            st.rerun()
+
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown(
@@ -620,9 +674,13 @@ with col3:
     st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.markdown('<div class="panel-body">', unsafe_allow_html=True)
 
-    from streamlit_autorefresh import st_autorefresh
-    with st.sidebar:
-        st_autorefresh(interval=1000, key="auto_refresh")
+    # from streamlit_autorefresh import st_autorefresh
+    # with st.sidebar:
+    #     st_autorefresh(interval=1000, key="auto_refresh")
+
+    if st.session_state.get("cam_active"):
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=15000, key="auto_refresh_cam")
 
     update_pomodoro()
     remain_exact = st.session_state.pomodoro_duration - (time.time() - st.session_state.pomodoro_start)
@@ -854,11 +912,4 @@ remaining = max(0, int(st.session_state.pomodoro_duration - (time.time() - st.se
 
 # === 주기 저장 ===
 now = time.time()
-if now - A.get("last_save_ts", 0) >= 3.0:
-    A["last_save_ts"] = now
-    A["user_data"]["threshold_ratio"] = A["threshold_ratio"]
-    A["user_data"]["min_duration_sec"] = A["min_yawn_duration"] / TARGET_FPS
-    A["user_data"]["avg_yawn_duration"] = round(A["avg_yawn_duration"], 2)
-    A["user_data"]["yawn_events"] = A["yawn_events"]
-    A["user_data"]["sleep_events"] = A["sleep_events"]
-    _save_user_data(A["user_data"])
+flush_events(force=False)

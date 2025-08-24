@@ -65,7 +65,8 @@ def kakao_callback(code: str):
 
     user = db.User.find_one({"provider": "kakao", "provider_id": int(kakao_id)})
     if not user:
-        db.User.insert_one({
+        # 새로 유저를 생성하고, 생성된 유저 정보를 다시 불러옵니다.
+        insert_result = db.User.insert_one({
             "provider": "kakao",
             "provider_id": int(kakao_id),
             "local_user_id": None,
@@ -76,12 +77,16 @@ def kakao_callback(code: str):
             "continuous_count": 0,
             "last_login_log": now_kst(),
         })
+        # 방금 삽입된 문서의 _id를 사용하여 user 정보를 가져옴
+        user = db.User.find_one({"_id": insert_result.inserted_id})
     else:
         bump_streak_and_touch(user)
         db.User.update_one({"_id": user["_id"]}, {"$set": {"nickname": nickname}})
-
+        
+    user_object_id = str(user["_id"]) # 👈 사용자의 ObjectId를 문자열로 저장
     n = quote_plus(nickname or "")
+    
     return RedirectResponse(
-        f"{FRONTEND_URL}/login_page?login=success&provider=kakao&uid={int(kakao_id)}&nickname={n}",
+        f"{FRONTEND_URL}/?login=success&provider=kakao&uid={int(kakao_id)}&nickname={n}&user_id={user_object_id}",
         status_code=302
     )

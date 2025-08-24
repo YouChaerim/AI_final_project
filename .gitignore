@@ -78,7 +78,6 @@ onnx_result_final.jpg
 onnx_result.jpg
 pexels-cottonbro-6753371.jpg
 pexels-shvets-production-8416079.jpg
-.gitignore
 user_yawn_data_user01.json
 train26
 ragtest
@@ -88,4 +87,14 @@ vectorstore
 quiz1.py
 quiz.py
 
-server
+uploads/*
+
+server/.env
+server/uploads
+server/data
+server/db_insert
+server/report_demo.py
+server/seed_ranking.py
+
+yolo11n.pt
+yolov8n.pt

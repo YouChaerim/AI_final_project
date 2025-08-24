@@ -1,10 +1,52 @@
-# pdf_folder_ui.py
-# PDF 폴더 - 날짜별 저장/열람/검색/미리보기/바로사용 (흰 바 완전 제거/토글 업로더/검색 버튼 정렬 유지)
+# pages/pdf_folder_ui
 import streamlit as st
 import datetime as dt
-import uuid, json, os, tempfile, shutil, base64
+import uuid, json, os, tempfile, shutil, base64, requests
+from components.auth import require_login
+from components.header import render_header
+from urllib.parse import urlencode
 
-st.set_page_config(page_title="PDF 폴더", layout="wide", initial_sidebar_state="collapsed")
+print(f"✅✅✅ Executing: {__file__} ✅✅✅")
+BACKEND_URL = "http://127.0.0.1:8080"  # 파일에 이미 있다면 그 값 사용
+FIXED_USER_ID = "68a57b61743df4d021f534d2"
+
+def _bootstrap_token_to_state_and_url():
+    # 1) URL → session_state
+    try:
+        qp = st.query_params
+    except Exception:
+        qp = st.experimental_get_query_params()
+
+    token_q = qp.get("token", None)
+    if isinstance(token_q, list):
+        token_q = token_q[0] if token_q else None
+
+    # 현재 세션에 있는 값
+    tok_ss = st.session_state.get("auth_token") or \
+             st.session_state.get("token") or \
+             st.session_state.get("access_token")
+
+    # URL에 token이 있으면 세션에 싣기 (여러 키에 동시 저장)
+    if token_q and token_q != tok_ss:
+        st.session_state["auth_token"]   = token_q
+        st.session_state["token"]        = token_q
+        st.session_state["access_token"] = token_q
+        tok_ss = token_q
+
+    # 2) session_state → URL (URL에 없거나 다르면 추가/갱신)
+    if tok_ss and token_q != tok_ss:
+        # 새 API: st.query_params 할당 → rerun 유발
+        st.query_params["token"] = tok_ss
+
+    return tok_ss
+
+# ✅ 반드시 require_login보다 먼저 호출!
+_ = _bootstrap_token_to_state_and_url()
+
+
+user = st.session_state.get("user", {}) or {}
+USER_ID = user.get("id") or user.get("_id") or user.get("user_id") or ""
+
 
 # ========================= 스타일 =========================
 st.markdown("""
@@ -22,8 +64,26 @@ div[data-testid="block-container"], div[class*="block-container"]{ padding-top:0
 div[data-testid="block-container"] > div:first-child{ margin-top:0 !important; padding-top:0 !important; }
 h1,h2,h3,h4,h5,h6{ margin-top:0 !important; }
 
-/* 컨테이너/타이틀 */
-.container{ max-width:1200px; margin:0 auto; padding:0 40px 8px; }
+            [data-testid="stAppViewContainer"] > .main .block-container{
+  max-width:100% !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+            div[data-testid="block-container"]{
+  max-width:100% !important;
+  width:100% !important;
+  margin-left:0 !important;
+  margin-right:0 !important;
+  padding-left:0 !important;
+  padding-right:0 !important;
+}
+
+/* 우리가 쓰는 컨테이너도 와이드 + 반응형 패딩 */
+.container{
+  max-width:100% !important;
+  width:100% !important;
+  padding:0 clamp(16px, 3vw, 40px) 8px !important;
+}
 .panel-head{
   margin-top:0; border-radius:18px;
   background:linear-gradient(90deg,#FF9330 0%,#FF7A00 100%);
@@ -135,27 +195,83 @@ def load_index() -> dict:
             pass
     return {}
 
-def save_index(data: dict):
-    _atomic_write_json(INDEX_PATH, data)
+# ========================= API 헬퍼 =========================
+def api_list_all():
+    r = requests.get(f"{BACKEND_URL}/pdf-folder-api/list",
+                     params={"user_id": FIXED_USER_ID}, timeout=10)
+    r.raise_for_status()
+    return r.json().get("items", [])
+
+def api_list_by_date(date_str: str):
+    r = requests.get(f"{BACKEND_URL}/pdf-folder-api/list",
+                     params={"user_id": FIXED_USER_ID, "date": date_str}, timeout=10)
+    r.raise_for_status()
+    return r.json().get("items", [])
+
+def api_upload_one(date_str: str, up_file) -> dict:
+    # up_file: Streamlit UploadedFile
+    files = {
+        "file": (up_file.name, up_file.read(), "application/pdf")
+    }
+    data = {"user_id": FIXED_USER_ID, "date": date_str}
+    r = requests.post(f"{BACKEND_URL}/pdf-folder-api/upload", data=data, files=files, timeout=60)
+    r.raise_for_status()
+    return r.json()["item"]
+
+def api_update(pdf_id: str, *, title: str | None = None, notes: str | None = None, date: str | None = None):
+    body = {"user_id": FIXED_USER_ID}
+    if title is not None:
+        body["title"] = title
+    if notes is not None:
+        body["notes"] = notes
+    if date is not None:
+        body["date"] = date
+    r = requests.put(f"{BACKEND_URL}/pdf-folder-api/update/{pdf_id}", json=body, timeout=10)
+    r.raise_for_status()
+    return r.json()["item"]
+
+def api_delete(pdf_id: str) -> bool:
+    r = requests.delete(f"{BACKEND_URL}/pdf-folder-api/delete/{pdf_id}",
+                        params={"user_id": FIXED_USER_ID}, timeout=10)
+    r.raise_for_status()
+    return r.json().get("ok", False)
+
+def api_download_bytes(pdf_id: str) -> bytes:
+    r = requests.get(f"{BACKEND_URL}/pdf-folder-api/download/{pdf_id}",
+                     params={"user_id": FIXED_USER_ID}, timeout=60)
+    r.raise_for_status()
+    return r.content
 
 # ========================= 세션 =========================
-if "pdf_index" not in st.session_state: st.session_state.pdf_index = load_index()
-if "pdf_edit"  not in st.session_state: st.session_state.pdf_edit  = {}
-if "pdf_use"   not in st.session_state: st.session_state.pdf_use   = None
-if "pdf_q_committed" not in st.session_state: st.session_state.pdf_q_committed = ""
-if "pdf_sel_date_committed" not in st.session_state: st.session_state.pdf_sel_date_committed = None
-if "pdf_show_uploader" not in st.session_state: st.session_state.pdf_show_uploader = False  # ← 기본 감춤
+if "pdf_items" not in st.session_state:
+    try:
+        st.session_state.pdf_items = api_list_all()
+    except Exception as e:
+        st.session_state.pdf_items = []
+        st.warning(f"PDF 목록을 불러오지 못했어요: {e}")
 
-idx = st.session_state.pdf_index
+if "pdf_edit" not in st.session_state:
+    st.session_state.pdf_edit = {}
+if "pdf_use" not in st.session_state:
+    st.session_state.pdf_use = None
+if "pdf_q_committed" not in st.session_state:
+    st.session_state.pdf_q_committed = ""
+if "pdf_sel_date_committed" not in st.session_state:
+    st.session_state.pdf_sel_date_committed = None
+if "pdf_show_uploader" not in st.session_state:
+    st.session_state.pdf_show_uploader = False
 
-# ========================= 헤더 =========================
+def refresh_items():
+    st.session_state.pdf_items = api_list_all()
+
+# ========================= 헤더/상단 =========================
+render_header()
 st.markdown("""
 <div class="container">
   <div class="panel-head">PDF 폴더</div>
 </div>
 """, unsafe_allow_html=True)
 
-# 이동 버튼
 st.markdown("<div class='container'>", unsafe_allow_html=True)
 btn_left, _ = st.columns([1, 6])
 with btn_left:
@@ -164,45 +280,47 @@ with btn_left:
         try: st.switch_page("pages/folder_page.py")
         except Exception: pass
 
-# 통계칩
-all_items = [(d, it) for d, lst in idx.items() for it in lst]
+# ---- 통계칩
+items = st.session_state.pdf_items
 today_str = dt.date.today().strftime("%Y-%m-%d")
 this_week  = dt.date.today().isocalendar().week
-cnt_total = len(all_items)
-cnt_today = sum(1 for d,_ in all_items if d == today_str)
-cnt_week  = sum(1 for d,_ in all_items if dt.date(*map(int, d.split("-"))).isocalendar().week == this_week)
+cnt_total = len(items)
+cnt_today = sum(1 for it in items if it.get("date") == today_str)
+def week_of(date_str):
+    try:
+        y, m, d = map(int, date_str.split("-"))
+        return dt.date(y, m, d).isocalendar().week
+    except Exception:
+        return -1
+cnt_week  = sum(1 for it in items if week_of(it.get("date","")) == this_week)
+
 c1, c2, c3 = st.columns(3)
 with c1: st.markdown(f'<div class="statchip">총 파일: {cnt_total}</div>', unsafe_allow_html=True)
 with c2: st.markdown(f'<div class="statchip">오늘: {cnt_today}</div>', unsafe_allow_html=True)
 with c3: st.markdown(f'<div class="statchip">이번 주: {cnt_week}</div>', unsafe_allow_html=True)
 
-# ========================= 검색 툴바 =========================
-if idx:
-    date_keys = sorted([dt.datetime.strptime(k, "%Y-%m-%d").date() for k in idx], reverse=True)
-    min_date = min(date_keys); max_date = max(date_keys)
-    default_date = st.session_state.pdf_sel_date_committed or date_keys[0]
-else:
-    date_keys = []; min_date = max_date = default_date = dt.date.today()
+# ========================= 검색/날짜 =========================
+date_keys = sorted({it["date"] for it in items}, reverse=True) if items else []
+default_date = st.session_state.pdf_sel_date_committed or (date_keys[0] if date_keys else dt.date.today())
+if isinstance(default_date, str):
+    default_date = dt.datetime.strptime(default_date, "%Y-%m-%d").date()
 
 with st.form("pdf_search", clear_on_submit=False):
     col_text, col_btn, col_date = st.columns([7, 1.2, 3])
-
     with col_text:
         st.markdown('<div class="row-label">제목/메모/파일명 검색</div>', unsafe_allow_html=True)
         st.markdown('<div id="pdf-search-input-anchor"></div>', unsafe_allow_html=True)
-        q_input = st.text_input("", placeholder="키워드…", key="pdf_q", label_visibility="collapsed")
-
+        q_input = st.text_input("검색어", placeholder="키워드…", key="pdf_q", label_visibility="collapsed")
     with col_btn:
         st.markdown('<div class="row-label">&nbsp;</div>', unsafe_allow_html=True)
         st.markdown('<div id="pdf-search-btn-anchor"></div>', unsafe_allow_html=True)
         do_search = st.form_submit_button("검색", use_container_width=True)
-
     with col_date:
         st.markdown('<div class="row-label">날짜 선택</div>', unsafe_allow_html=True)
         st.markdown('<div id="pdf-date-input-anchor"></div>', unsafe_allow_html=True)
-        pick_date = st.date_input("", value=default_date, min_value=min_date, max_value=max_date,
-                                  format="YYYY-MM-DD", key="pdf_date_input", label_visibility="collapsed")
-
+        pick_date = st.date_input("", value=default_date,
+                                  format="YYYY-MM-DD", key="pdf_date_input",
+                                  label_visibility="collapsed")
     if do_search:
         st.session_state.pdf_q_committed = q_input
         st.session_state.pdf_sel_date_committed = pick_date
@@ -213,13 +331,12 @@ sel_date_str = pick_date.strftime("%Y-%m-%d")
 
 st.divider()
 
-# ========================= 업로드(흰 바 제거 확정) =========================
+# ========================= 업로드 =========================
 with st.expander("➕ PDF 추가"):
     top_l, top_r = st.columns([7, 2])
     with top_l:
-        st.markdown("<p class='upload-msg'>업로드 된 PDF 파일입니다.!</p>", unsafe_allow_html=True)
+        st.markdown("<p class='upload-msg'>파일을 선택하고 업로드를 누르면 오늘 날짜로 저장됩니다.</p>", unsafe_allow_html=True)
     with top_r:
-        # 업로더 열고닫기 토글
         if st.button(("업로더 닫기" if st.session_state.pdf_show_uploader else "파일 선택"),
                      key="toggle-uploader", type="secondary", use_container_width=True):
             st.session_state.pdf_show_uploader = not st.session_state.pdf_show_uploader
@@ -227,10 +344,7 @@ with st.expander("➕ PDF 추가"):
 
     up_files = None
     if st.session_state.pdf_show_uploader:
-        # 파일이 선택되면 드롭존을 display:none 처리하기 위해 클래스 추가
-        has_files = bool(st.session_state.get("pdf_files"))
-        wrapper_class = "hide-dropzone" if has_files else ""
-        st.markdown(f"<div id='pdf-upload-wrapper' class='{wrapper_class}'>", unsafe_allow_html=True)
+        st.markdown(f"<div id='pdf-upload-wrapper'>", unsafe_allow_html=True)
         up_files = st.file_uploader("PDF 업로드", type=["pdf"], accept_multiple_files=True,
                                     label_visibility="collapsed", key="pdf_files")
         st.markdown("</div>", unsafe_allow_html=True)
@@ -238,86 +352,38 @@ with st.expander("➕ PDF 추가"):
         st.caption("여러 개 선택 가능 · 저장 시 오늘 날짜로 자동 분류됩니다.")
         if st.button("업로드", type="primary", disabled=not up_files, key="do-upload"):
             saved = 0
-            key = dt.date.today().strftime("%Y-%m-%d")
-            for uf in up_files:
+            today = dt.date.today().strftime("%Y-%m-%d")
+            for uf in (up_files or []):
                 try:
-                    file_id = str(uuid.uuid4())
-                    safe_name = os.path.splitext(os.path.basename(uf.name))[0]
-                    store_dir = os.path.join(STORE_DIR, key)
-                    os.makedirs(store_dir, exist_ok=True)
-                    store_path = os.path.join(store_dir, f"{file_id}.pdf")
-                    data = uf.read()
-                    with open(store_path, "wb") as f: f.write(data)
-                    item = {
-                        "id": file_id,
-                        "title": safe_name,
-                        "original_name": uf.name,
-                        "stored_path": store_path,
-                        "size": len(data),
-                        "notes": "",
-                        "created_at": dt.datetime.now().isoformat(timespec="seconds"),
-                        "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
-                    }
-                    st.session_state.pdf_index.setdefault(key, []).append(item)
+                    # Streamlit UploadedFile 객체는 .read() 후 포인터가 끝으로 가므로
+                    # 각 파일마다 read() 1번만 호출하여 전송합니다.
+                    _ = api_upload_one(today, uf)
                     saved += 1
                 except Exception as e:
                     st.warning(f"업로드 실패: {uf.name} ({e})")
             if saved:
-                save_index(st.session_state.pdf_index)
-                # 업로드 후 업로더 닫기 → 드롭존/흰 바 재등장 원천 차단
+                refresh_items()
                 st.session_state.pdf_show_uploader = False
                 st.success(f"{saved}개 파일이 저장되었습니다.")
                 st.rerun()
 
-# ========================= 액션 유틸 =========================
-def _save_and_rerun():
-    save_index(st.session_state.pdf_index)
-    st.rerun()
-
-def delete_item(date_key, item_id):
-    lst = st.session_state.pdf_index.get(date_key, [])
-    keep = []
-    for it in lst:
-        if it["id"] == item_id:
-            try:
-                if os.path.exists(it["stored_path"]):
-                    os.remove(it["stored_path"])
-            except Exception:
-                pass
-        else:
-            keep.append(it)
-    if keep:
-        st.session_state.pdf_index[date_key] = keep
-    else:
-        st.session_state.pdf_index.pop(date_key, None)
-    _save_and_rerun()
-
-def set_use(item_id):
-    st.session_state.pdf_use = item_id
-
-def read_bytes(path: str, limit_mb: float = 8.0):
-    if not os.path.exists(path): return None, 0
-    size = os.path.getsize(path)
-    if size > limit_mb * 1024 * 1024: return None, size
-    with open(path, "rb") as f: data = f.read()
-    return data, size
-
 # ========================= 필터링/출력 =========================
-def matches(it, date_key: str) -> bool:
-    if date_key != sel_date_str: return False
+def matches(it) -> bool:
+    if it.get("date") != sel_date_str:
+        return False
     if q:
         qq = q.lower()
-        blob = " ".join([it.get("title",""), it.get("notes",""), it.get("original_name","")]).lower()
-        if qq not in blob: return False
+        blob = " ".join([
+            it.get("title",""),
+            it.get("notes",""),
+            it.get("original_name","")
+        ]).lower()
+        return qq in blob
     return True
 
-filtered = []
-for d in sorted(st.session_state.pdf_index.keys(), reverse=True):
-    for it in sorted(st.session_state.pdf_index[d], key=lambda x: x.get("updated_at",""), reverse=True):
-        if matches(it, d):
-            filtered.append((d, it))
+filtered = [it for it in sorted(items, key=lambda x: x.get("updated_at",""), reverse=True) if matches(it)]
 
-def render_card(date_key: str, it: dict):
+def render_card(it: dict):
     iid = it["id"]; is_edit = st.session_state.pdf_edit.get(iid, False)
     st.markdown('<div class="card">', unsafe_allow_html=True)
 
@@ -327,13 +393,13 @@ def render_card(date_key: str, it: dict):
         c1, c2 = st.columns(2)
         with c1:
             if st.button("저장", key=f"save-{iid}", type="primary", use_container_width=True):
-                it.update({
-                    "title": et_title.strip() or it.get("title",""),
-                    "notes": et_notes.strip(),
-                    "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
-                })
-                st.session_state.pdf_edit[iid] = False
-                _save_and_rerun()
+                try:
+                    _ = api_update(iid, title=et_title.strip() or it.get("title",""), notes=et_notes.strip())
+                    refresh_items()
+                    st.session_state.pdf_edit[iid] = False
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"저장 실패: {e}")
         with c2:
             if st.button("취소", key=f"cancel-{iid}", use_container_width=True):
                 st.session_state.pdf_edit[iid] = False
@@ -347,48 +413,57 @@ def render_card(date_key: str, it: dict):
             if st.button("✏️ 편집", key=f"edit-{iid}", use_container_width=True):
                 st.session_state.pdf_edit[iid] = True; st.rerun()
         with a2:
-            data, size = read_bytes(it.get("stored_path",""))
-            if data:
+            try:
+                data = api_download_bytes(iid)
                 st.download_button("⬇️ 다운로드", data=data, file_name=it.get("original_name","file.pdf"),
                                    mime="application/pdf", use_container_width=True, key=f"dl-{iid}")
-            else:
+            except Exception:
                 st.button("⬇️ 다운로드", disabled=True, use_container_width=True, key=f"dl-{iid}-d")
         with a3:
-            st.button("📌 바로 사용", on_click=set_use, args=(iid,), use_container_width=True, key=f"use-{iid}")
+            if st.button("📌 바로 사용", use_container_width=True, key=f"use-{iid}"):
+                st.session_state.pdf_use = iid
+                st.rerun()
         with a4:
             if st.button("🗑 삭제", use_container_width=True, key=f"del-{iid}"):
-                delete_item(date_key, iid)
+                try:
+                    if api_delete(iid):
+                        refresh_items()
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"삭제 실패: {e}")
 
-        pv_key = f"pv-{iid}"; st.session_state.setdefault(pv_key, False)
+        pv_key = f"pv-{iid}"
+        st.session_state.setdefault(pv_key, False)
         if st.button(("🔍 미리보기 닫기" if st.session_state[pv_key] else "🔍 미리보기"),
                      use_container_width=True, key=f"pvbtn-{iid}"):
             st.session_state[pv_key] = not st.session_state[pv_key]; st.rerun()
 
         if st.session_state[pv_key]:
-            data, size = read_bytes(it.get("stored_path",""))
-            if data:
+            try:
+                data = api_download_bytes(iid)
                 b64 = base64.b64encode(data).decode()
                 st.markdown(
                     f"<div class='preview-box'><iframe src='data:application/pdf;base64,{b64}' "
                     f"width='100%' height='640' style='border:0;'></iframe></div>",
                     unsafe_allow_html=True
                 )
-            else:
-                st.info("파일이 큽니다. 다운로드로 열어 주세요.")
+            except Exception as e:
+                st.info(f"미리보기를 불러오지 못했습니다: {e}")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 if not filtered:
     st.info("이 날짜에는 PDF가 없습니다. 위의 업로드에서 추가해 보세요.")
 else:
-    for d, it in filtered: render_card(d, it)
+    for it in filtered:
+        render_card(it)
 
-# 선택된 PDF 안내
+# 현재 선택된 PDF
 if st.session_state.pdf_use:
     def find_title(iid: str):
-        for d, lst in st.session_state.pdf_index.items():
-            for it in lst:
-                if it["id"] == iid: return it.get("title","")
+        for x in st.session_state.pdf_items:
+            if x["id"] == iid:
+                return x.get("title","")
         return ""
     st.success(f"현재 선택된 PDF: {find_title(st.session_state.pdf_use)} — 다른 페이지/기능에서 바로 사용할 수 있어요.")
 

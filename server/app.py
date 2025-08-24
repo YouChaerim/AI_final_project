@@ -2,8 +2,10 @@
 # 실행:  python -m uvicorn server.app:app --reload --host 0.0.0.0 --port 8080
 import os
 from fastapi import FastAPI
+from .server_db import db
 from fastapi.middleware.cors import CORSMiddleware
-from server import kakao_sign, local_sign
+from fastapi.staticfiles import StaticFiles
+from server import kakao_sign, local_sign, todos, memos, study_time, ocr_files, study_sessions, quizzes, reports, ranking, memo_folder_api, wrong_folder_api, pdf_folder_api
 
 app = FastAPI(title="ttalk API", version="0.1.0")
 
@@ -19,6 +21,17 @@ app.add_middleware(
 # 👉 라우터 마운트(엔드포인트는 각 파일 내부에만 존재)
 app.include_router(local_sign.router)
 app.include_router(kakao_sign.router)
+app.include_router(todos.router)
+app.include_router(memos.router)
+app.include_router(study_time.router)
+app.include_router(ocr_files.router)
+app.include_router(study_sessions.router)
+app.include_router(quizzes.router)
+app.include_router(reports.router)
+app.include_router(ranking.router)
+app.include_router(memo_folder_api.router)
+app.include_router(wrong_folder_api.router)
+app.include_router(pdf_folder_api.router)
 
 @app.get("/health")
 def health():
@@ -32,4 +45,21 @@ def kakao_debug():
         "client_id": cid,
         "redirect_uri": os.getenv("KAKAO_REDIRECT_URI"),
         "frontend_url": FRONTEND_URL,
+    }
+
+BASE_DIR = os.path.dirname(__file__)
+STATIC_ROOT = os.path.join(BASE_DIR, "uploads")
+os.makedirs(STATIC_ROOT, exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_ROOT), name="static")
+
+
+@app.get("/debug/db")
+def debug_db():
+    import os, re
+    uri = os.getenv("MONGODB_URI") or os.getenv("MONGO_URL") or ""
+    uri_masked = re.sub(r"//([^:]+):([^@]+)@", r"//\1:****@", uri) if uri else ""
+    return {
+        "db": db.name,
+        "collections": sorted(db.list_collection_names()),
+        "uri": uri_masked,
     }

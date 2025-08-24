@@ -5,25 +5,18 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta, time
 import random
-import os, json, base64
+import os, json, base64, requests
+from components.header import render_header
+from components.auth import require_login
 
-# ================= 기본 설정 =================
-st.set_page_config(page_title="📊 학습 리포트 대시보드", layout="wide", initial_sidebar_state="collapsed")
+print(f"✅✅✅ Executing: {__file__} ✅✅✅")
+BACKEND_URL = "http://127.0.0.1:8080"  # 파일에 이미 있다면 그 값 사용
+require_login(BACKEND_URL)
 
-# ---- user_data 불러오기 (다크모드/아바타) ----
-if "user_data" not in st.session_state:
-    if os.path.exists("user_data.json"):
-        with open("user_data.json", "r", encoding="utf-8") as f:
-            st.session_state.user_data = json.load(f)
-    else:
-        st.session_state.user_data = {"dark_mode": False}
+user = st.session_state.get("user", {}) or {}
+USER_ID = user.get("id") or user.get("_id") or user.get("user_id") or ""
 
-ud = st.session_state.user_data
-ud.setdefault("dark_mode", False)
-ud.setdefault("active_char", "rabbit")
-ud.setdefault("owned_hats", [])
-ud.setdefault("equipped_hat", None)
-dark = ud.get("dark_mode", False)
+dark = user.get("dark_mode", False)
 
 # ---- 컬러 ----
 if dark:
@@ -72,13 +65,40 @@ def get_char_image_uri(char_key: str, hat_id: str | None = None) -> str:
             "</svg>")
 
 def current_avatar_uri() -> str:
-    char_key = ud.get("active_char", "rabbit")
-    hat_id = ud.get("equipped_hat")
-    if hat_id and (hat_id in ud.get("owned_hats", [])):
+    char_key = user.get("active_char", "rabbit")
+    hat_id = user.get("equipped_hat")
+    if hat_id and (hat_id in user.get("owned_hats", [])):
         return get_char_image_uri(char_key, hat_id)
     return get_char_image_uri(char_key)
-
 header_avatar_uri = current_avatar_uri()
+
+def _extract_backend_uid(u: dict) -> str:
+    v = u.get("_id")
+    if isinstance(v, dict) and "$oid" in v: return v["$oid"]
+    if isinstance(v, str) and len(v) == 24: return v
+    for k in ("id","user_id","local_user_id","localUserId","provider_id"):
+        vv = u.get(k)
+        if isinstance(vv, dict) and "$oid" in vv: return vv["$oid"]
+        if isinstance(vv, str): return vv
+    return ""
+
+USER_KEY = _extract_backend_uid(user)
+
+if not USER_KEY:
+    st.error("사용자 식별값이 없습니다. 다시 로그인해 주세요.")
+    st.stop()
+
+def fetch_daily(start_d, end_d):
+    url = f"{BACKEND_URL}/reports/daily/{USER_KEY}"
+    r = requests.get(url, params={"start": start_d.isoformat(), "end": end_d.isoformat()}, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+def fetch_focus(day_d):
+    url = f"{BACKEND_URL}/reports/focus/{USER_KEY}"
+    r = requests.get(url, params={"day": day_d.isoformat()}, timeout=10)
+    r.raise_for_status()
+    return r.json().get("events", [])
 
 # ================= CSS (폴더 헤더 1:1 + 헤더 밀착 + 드롭다운 겹침 해결) =================
 st.markdown(f"""
@@ -201,26 +221,8 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 공통 헤더 (폴더 페이지와 동일 HTML, /mainpage 링크) =================
-st.markdown(f"""
-<div class="top-nav">
-  <div class="nav-left">
-    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
-    <div class="nav-menu">
-      <div><a href="/mainpage" target="_self">메인페이지</a></div>
-      <div><a href="/main" target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle" target="_self">PDF 요약</a></div>
-      <div><a href="/folder_page" target="_self">저장폴더</a></div>
-      <div><a href="/quiz" target="_self">퀴즈</a></div>
-      <div><a href="/report" target="_self">리포트</a></div>
-      <div><a href="/ranking" target="_self">랭킹</a></div>
-    </div>
-  </div>
-  <div class="profile-group">
-    <div class="profile-icon" title="내 캐릭터"><img src="{header_avatar_uri}" alt="avatar"/></div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+
+render_header()
 
 # ================= 본문 =================
 st.markdown('<div class="container">', unsafe_allow_html=True)
@@ -228,42 +230,41 @@ st.markdown('<div class="panel">', unsafe_allow_html=True)
 # 주황색 큰 바는 숨김(폴더 페이지와 달리 panel-head 미출력)
 st.markdown('<div class="panel-body">', unsafe_allow_html=True)
 
-# ---------------- 데이터 (예시) ----------------
-date_range = pd.date_range(start="2025-01-01", end="2025-12-31", freq="D")
-df = pd.DataFrame({
-    "날짜": date_range,
-    "학습시간": (pd.Series(range(len(date_range))) % 5 + 1) * 10,   # 분
-    "포인트": (pd.Series(range(len(date_range))) % 4 + 1) * 15,
-    "출석": [1 if i % 2 == 0 else 0 for i in range(len(date_range))],
-})
-df["날짜_date"] = df["날짜"].dt.date
-
+# ---------------- 데이터 (API) ----------------
 today_date = datetime.today().date()
-data_start = df["날짜_date"].min()
-data_end = df["날짜_date"].max()
-default_end = min(today_date, data_end)
-default_start = max(data_start, default_end - timedelta(days=30))
+default_end = today_date
+default_start = default_end - timedelta(days=30)
 
 with st.expander("📅 기간 선택", expanded=False):
     c1, c2 = st.columns(2)
     with c1:
-        start_date = st.date_input("시작일", value=default_start, min_value=data_start, max_value=data_end, key="start_date")
+        start_date = st.date_input("시작일", value=default_start, key="start_date")
     with c2:
-        end_date = st.date_input("종료일", value=default_end, min_value=data_start, max_value=data_end, key="end_date")
+        end_date = st.date_input("종료일", value=default_end, key="end_date")
     if start_date > end_date:
         st.error("⚠️ 시작일은 종료일보다 빠르거나 같아야 합니다.")
         st.stop()
 
-mask = (df["날짜_date"] >= start_date) & (df["날짜_date"] <= end_date)
-filtered_df = df.loc[mask].reset_index(drop=True)
+# 백엔드에서 기간 데이터 가져와서 DF 구성
+daily = fetch_daily(start_date, end_date)
+df = pd.DataFrame([{
+    "날짜": datetime.fromisoformat(d["date"]),
+    "날짜_date": datetime.fromisoformat(d["date"]).date(),
+    "학습시간": int(d.get("study_minutes", 0)),
+    "포인트": int(d.get("points", 0)),
+    "출석": int(d.get("attendance", 0)),
+} for d in daily.get("days", [])])
+
+# charts에서 쓰는 이름 그대로 유지
+filtered_df = df.copy()
 
 # ---------- 요약 카드 ----------
 total_days = len(filtered_df)
-total_study_time = int(filtered_df["학습시간"].sum())        # 분
-total_point = int(filtered_df["포인트"].sum())
-total_attendance = int(filtered_df["출석"].sum())
+total_study_time = int(filtered_df["학습시간"].sum()) if total_days else 0
+total_point = int(filtered_df["포인트"].sum()) if total_days else 0
+total_attendance = int(filtered_df["출석"].sum()) if total_days else 0
 rate = round((total_attendance/total_days)*100, 1) if total_days else 0
-today_minutes = int(df.loc[df["날짜_date"] == today_date, "학습시간"].sum())
+today_minutes = int(df.loc[df["날짜_date"] == today_date, "학습시간"].sum()) if total_days else 0
 
 st.markdown(f"""
 <div class="metrics">
@@ -298,21 +299,22 @@ with c1_chart:
 
     with st.container(border=True):
         st.markdown("### 평균 차트")
+        has_rows = len(filtered_df) > 0
 
         if category == "일 공부 시간 평균":
-            avg_minutes = float(filtered_df["학습시간"].mean() or 0.0)
+            avg_minutes = float(filtered_df["학습시간"].mean()) if has_rows else 0.0
             gauge_value = int(round(avg_minutes))
             max_range = 24 * 60
             unit = "분"
             h = gauge_value // 60; m = gauge_value % 60
             custom_label = f"{h}시간 {m}분"
         elif category == "일 포인트 평균":
-            avg_points = float(filtered_df["포인트"].mean() or 0.0)
+            avg_points = float(filtered_df["포인트"].mean()) if has_rows else 0.0
             gauge_value = round(avg_points, 1)
             max_range = max(100, int(max(1.0, gauge_value * 2)))
             unit = "P"; custom_label = f"{gauge_value} P"
         else:
-            gauge_value = random.randint(60, 100)
+            gauge_value = 0 if not has_rows else random.randint(60, 100)
             max_range = 100; unit = "%"; custom_label = f"{gauge_value}%"
 
         val = max(0, min(gauge_value, max_range - 1e-6))
@@ -377,12 +379,14 @@ with c3_chart:
     with st.container(border=True):
         st.markdown("### 포인트 획득 차트")
 
-        total_pts = int(filtered_df["포인트"].sum())
-        weights = {"퀴즈": 0.40, "출석": 0.35, "집중도": 0.25}
-        points_data = {k: round(total_pts * w) for k, w in weights.items()} if total_pts > 0 else {k: 0 for k in weights}
-        vals = list(points_data.values())
+        by_reason = daily.get("points_by_reason", {}) or {}
+        top = sorted(by_reason.items(), key=lambda x: x[1], reverse=True)[:3]
+        labels = [k for k, _ in top] or ["QUIZ", "ATTENDANCE", "ETC"]
+        vals = [int(v) for _, v in top] or [0, 0, 0]
+        total_pts = sum(vals)
         if sum(vals) == 0:
             vals = [1, 1, 1]
+        points_data = dict(zip(labels, vals))
 
         pts_fig = go.Figure(data=[go.Pie(
             labels=list(points_data.keys()),
@@ -441,21 +445,9 @@ st.markdown('<div class="section-head"><span>하루 집중도</span><span class=
 # ▶ 케이지 + 카드 + 클리핑 레이어
 st.markdown('<div class="focus-cage"><div class="focus-card"><div class="clip-shield">', unsafe_allow_html=True)
 
-focus_day = st.session_state.get("focus_day", default_end)
-
-# ─ 데모 세션(그대로)
-if "focus_events" in st.session_state:
-    base_events = st.session_state["focus_events"]
-else:
-    rnd = random.Random(13)
-    base_events = [
-        {"time":"09:00","blinks":2,"yawns":1},
-        {"time":"09:30","blinks":3,"yawns":0},
-        {"time":"10:00","blinks":4,"yawns":2},
-    ]
-    for ev in base_events:
-        ev["blinks"] = max(0, ev["blinks"] + rnd.randint(-1,1))
-        ev["yawns"]  = max(0, ev["yawns"]  + rnd.randint(-1,1))
+# ─ 백엔드에서 하루 집중도 이벤트 조회
+focus_day = st.session_state.get("focus_day", min(end_date, today_date))
+base_events = fetch_focus(focus_day)
 
 SESS_LEN = 25
 sessions = []

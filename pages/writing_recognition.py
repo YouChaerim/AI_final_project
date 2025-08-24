@@ -1,17 +1,34 @@
-# app.py
+# pages/writing_recognition.py
 # -*- coding: utf-8 -*- (유니코드로 수정 2025/07/25)
 import io, os, re, gc, json, random, base64
 import numpy as np
 import streamlit as st
 import cv2
 from PIL import Image
-from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv
 from openai import OpenAI
 from PyPDF2 import PdfReader
 from pdf2image import convert_from_bytes
 from pdf2image.exceptions import PDFInfoNotInstalledError  # 오타 수정
 from collections import Counter  # ✅ [추가] 보조 유사도 계산용
 from functools import lru_cache   # ✅ [추가] 임베딩 캐시(과금/호출 최소화)
+from pprint import pformat
+import requests
+from components.header import render_header
+from components.auth import require_login, AUTH_KEYS
+from urllib.parse import urlencode
+
+print(f"✅✅✅ Executing: {__file__} ✅✅✅")
+
+BACKEND_URL = "http://127.0.0.1:8080"
+user = st.session_state.get("user", {}) or {}
+USER_ID = user.get("id") or user.get("_id") or user.get("user_id") or ""
+
+if not USER_ID:
+    st.error("세션에 사용자 정보가 없습니다. 다시 로그인해 주세요.")
+    st.switch_page("onboarding.py")
+    st.stop()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RAG 모듈 경로 자동 인식
@@ -27,16 +44,16 @@ for _r in _CAND_ROOTS:
 # =========================
 # 환경변수 로드
 # =========================
-load_dotenv(dotenv_path="C:/Users/user/Desktop/main_project/.env", override=True)
+ROOT_DIR = Path(__file__).resolve().parents[1]
+ENV_PATH = ROOT_DIR / ".env"
+
+loaded = load_dotenv(dotenv_path=ENV_PATH, override=True)
+
+if not loaded:
+    loaded = load_dotenv(find_dotenv(filename=".env", usecwd=True), override=True)
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 POPPLER_PATH   = os.getenv("POPPLER_PATH")
-
-# =========================
-# 페이지 기본 설정
-# =========================
-st.set_page_config(page_title="📄 OCR + GPT 요약/퀴즈 생성기",
-                   layout="wide",
-                   initial_sidebar_state="collapsed")
 
 # =========================
 # 캐릭터 이미지 유틸
@@ -106,7 +123,34 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
   overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,.06);
 }}
 .profile-icon img {{ width:100%; height:100%; object-fit:contain; }}
+/* ───── 구버전 호환 탭바 (PDF 요약 / 퀴즈 생성기) ───── */
+.top-tabs{{ 
+  display:block;                  /* flex 안 씀 */
+  border-bottom:1px solid #EDEDED;
+  margin:6px 0 14px;
+  padding:0;
+  line-height:1;                  /* 라인 간격 안정화 */
+  white-space:nowrap;             /* 줄바꿈 방지 */
+}}
+.top-tabs .tab{{ 
+  display:inline-block;           /* 구형 브라우저 호환 */
+  padding:10px 2px;
+  margin-right:24px;              /* gap 대체 */
+  font-weight:900;
+  font-size:16px;
+  color:#9AA3AE;
+  text-decoration:none !important;
+  border-bottom:3px solid transparent;
+  vertical-align:bottom;          /* 밑줄 정렬 안정화 */
+}}
+.top-tabs .tab:last-child{{ margin-right:0; }}
 
+/* 활성 탭(주황 밑줄) */
+.top-tabs .tab.active,
+.top-tabs .tab[aria-current="page"]{{ 
+  color:#FF7A30;
+  border-bottom-color:#FF7A30;
+}}
 /* ─────────────  주황 타이틀 패널/줄 제거 + 공간 회수  ───────────── */
 .panel, .panel-head, .panel-body {{
   display:none !important;
@@ -116,6 +160,7 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
   border:0 !important;
   box-shadow:none !important;
 }}
+
 /* 탭을 바로 헤더 아래로 붙이기 */
 .stTabs{{ margin-top:0 !important; margin-bottom:0 !important; }}
 .stTabs [role="tablist"] {{
@@ -129,6 +174,26 @@ a, a:hover, a:focus, a:visited {{ text-decoration:none !important; }}
   padding-top:0 !important; margin-top:0 !important;
 }}
 
+/* --- 버튼 기반 탭바 (f-string 안전 버전) --- */
+.tabbar{{
+  display:flex; align-items:flex-end; gap:24px;
+  border-bottom:1px solid #EDEDED; margin:6px 0 14px;
+  background:{nav_bg};
+}}
+.tabbar .tab{{ display:inline-block; }}
+
+.tabbar .tab .stButton>button{{
+  background:transparent !important; color:#9AA3AE !important;
+  border:0 !important; border-bottom:3px solid transparent !important;
+  border-radius:0 !important; padding:10px 2px !important;
+  font-weight:900 !important; font-size:16px !important; box-shadow:none !important;
+}}
+.tabbar .tab .stButton>button:hover{{ color:#FF7A30 !important; }}
+
+.tabbar .tab.active .stButton>button{{
+  color:#FF7A30 !important; border-bottom-color:#FF7A30 !important;
+}}
+ 
 /* 탭 선택색은 유지 */
 .stTabs [role="tab"] {{ font-weight:800; }}
 .stTabs [role="tab"][aria-selected="true"] {{ color:#FF7A30 !important; }}
@@ -209,6 +274,7 @@ div[data-testid="stFileUploader"] label {{ display:none !important; }}
 # =========================
 # OpenAI 클라이언트
 # =========================
+
 @st.cache_resource
 def get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY")
@@ -555,7 +621,7 @@ from collections import Counter
 from functools import lru_cache
 
 # 임계값(기본 0.95). .env에 SIM_THRESHOLD=0.92 처럼 넣으면 코드 수정 없이 조정 가능
-SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", "0.75"))
+SIM_THRESHOLD = float(os.getenv("SIM_THRESHOLD", "0.95"))
 
 def _norm_text_kor(s: str) -> str:
     if s is None:
@@ -796,32 +862,26 @@ def answer_guarded(user_q: str, context: dict, lesson_summary: str, qlist: list)
         model=MODEL_SUMMARY, temperature=0.1, max_tokens=700
     )
 
+# ✅ 탭 전환 시 지울 "이 페이지 전용" 키만 지정 (인증/유저 정보는 건드리지 않음)
+WR_PAGE_KEYS_ON_SWITCH = {
+    "summary_pref","summary_stage",
+    "_pdf_bytes","_pdf_name","pages_text_cache","total_pages_cache",
+    "doc_id_cache","have_rag_cache",
+    "summary","_last_evidence","_result_title","_result_pdf_bytes","_result_pdf_name",
+    "page_s_num","page_e_num","pdf_uploader_main",
+    "count_input","t_obj","t_ox","t_sa","quiz_content_input",
+    "quiz_data","user_answers","current_idx","graded","score",
+    "free_q_input_normal_app","sim_threshold", "_prefilled_summary_from_db",
+}
+
+def clear_on_tab_switch():
+    for k in WR_PAGE_KEYS_ON_SWITCH:
+        st.session_state.pop(k, None)
 
 # =========================
 # 공통 헤더
 # =========================
-char_key = (st.session_state.get("user_data") or {}).get("active_char", "rabbit")
-header_avatar_uri = get_char_image_uri(char_key)
-
-st.markdown(f"""
-<div class="top-nav">
-  <div class="nav-left">
-    <div><a href="/mainpage" target="_self">🐾 딸깍공</a></div>
-    <div class="nav-menu">
-      <div><a href="/mainpage" target="_self">메인페이지</a></div>
-      <div><a href="/main" target="_self">공부 시작</a></div>
-      <div><a href="/ocr_paddle" target="_self">PDF요약</a></div>
-      <div><a href="/folder_page" target="_self">저장폴더</a></div>
-      <div><a href="/quiz" target="_self">퀴즈</a></div>
-      <div><a href="/report" target="_self">리포트</a></div>
-      <div><a href="/ranking" target="_self">랭킹</a></div>
-    </div>
-  </div>
-  <div class="profile-group">
-    <div class="profile-icon" title="내 캐릭터"><img src="{header_avatar_uri}" alt="avatar"/></div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+render_header()
 
 # =========================
 # 본문 컨테이너
@@ -835,13 +895,76 @@ st.markdown('<div class="container">', unsafe_allow_html=True)
 # st.markdown('</div>', unsafe_allow_html=True)
 
 # 탭
-tab1, tab2 = st.tabs(["PDF 요약", "퀴즈 생성기"])
+try:
+    _qp = st.query_params
+except Exception:
+    _qp = st.experimental_get_query_params()
+
+# 현재 쿼리 보존 + token 확보
+_qp_dict = dict(_qp)
+
+def _first(v):
+    return v[0] if isinstance(v, list) else v
+
+_token_qp = _first(_qp_dict.get("token"))
+# 세션에 토큰이 없고 URL에만 있으면 세션에도 채워준다
+if "auth_token" not in st.session_state and _token_qp:
+    st.session_state["auth_token"] = _token_qp
+
+_token = _token_qp or st.session_state.get("auth_token")
+
+def _tab_href(tab_name: str) -> str:
+    params = dict(_qp_dict)    # 기존 파라미터 복사
+    params["tab"] = tab_name   # 탭만 바꿔치기
+    if _token:                 # token 반드시 유지
+        params["token"] = _token
+    return "?" + urlencode(params, doseq=True)
+
+_active = _qp_dict.get("tab", "pdf")
+if isinstance(_active, list):
+    _active = _active[0] if _active else "pdf"
+if _active not in ("pdf", "quiz"):
+    _active = "pdf"
+
+_prev = st.session_state.get("_active_tab")
+if _prev is None:
+    st.session_state["_active_tab"] = _active
+elif _prev != _active:
+    clear_on_tab_switch()
+    st.session_state["_active_tab"] = _active
+
+# --- 버튼 기반 탭바 (전체 리로드 없음) ---
+st.markdown('<div class="tabbar">', unsafe_allow_html=True)
+col1, col2 = st.columns([1,1], gap="small")
+
+with col1:
+    st.markdown(
+        f"<div class='tab {'active' if st.session_state['_active_tab']=='pdf' else ''}'>",
+        unsafe_allow_html=True
+    )
+    if st.button("PDF 요약", key="go_pdf"):
+        st.query_params["tab"] = "pdf"
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with col2:
+    st.markdown(
+        f"<div class='tab {'active' if st.session_state['_active_tab']=='quiz' else ''}'>",
+        unsafe_allow_html=True
+    )
+    if st.button("퀴즈 생성기", key="go_quiz"):
+        st.query_params["tab"] = "quiz"
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+require_login(BACKEND_URL)
 
 # -------------------------------------------------------------------
 # TAB 1: PDF 요약
 # -------------------------------------------------------------------
-with tab1:
-    st.session_state["_active_tab"] = "pdf"
+if st.session_state["_active_tab"] == "pdf":
 
     if "summary_pref" not in st.session_state:
         st.session_state.summary_pref = {"mode": "핵심 요약", "length_bias": 0}
@@ -966,6 +1089,8 @@ with tab1:
                     st.session_state["summary"] = summary_text
                     st.session_state["_last_evidence"] = evidence or []
                     st.session_state["_result_title"] = title
+                    st.session_state["_result_pdf_bytes"] = st.session_state.get("_pdf_bytes")
+                    st.session_state["_result_pdf_name"] = st.session_state.get("_pdf_name")
                     st.session_state.summary_stage = "result"
                     st.rerun()
 
@@ -1013,6 +1138,8 @@ with tab1:
         title = st.session_state.get("_result_title", "PDF 요약 결과")
         summary_text = st.session_state.get("summary", "")
         evidence = st.session_state.get("_last_evidence", [])
+        pdf_bytes = st.session_state.get("_result_pdf_bytes")
+        pdf_name = st.session_state.get("_result_pdf_name", "untitled.pdf")
 
         st.markdown('<div class="card-begin"></div>', unsafe_allow_html=True)
         with st.container():
@@ -1021,8 +1148,23 @@ with tab1:
                 st.info("요약 결과가 비어 있습니다.")
             else:
                 st.write(summary_text)
+
+            if st.button("💾 요약 결과 저장하기", key="save_summary"):
+                if pdf_bytes and summary_text:
+                    with st.spinner("DB에 저장 중..."):
+                        try:
+                            files = {'file': (pdf_name, pdf_bytes, 'application/pdf')}
+                            data = {'summary': summary_text}
+                            response = requests.post(f"{BACKEND_URL}/ocr-files/{USER_ID}", files=files, data=data)
+                            response.raise_for_status()
+                            st.write("응답:", response.json())
+                            st.success("🎉 요약 내용이 '저장폴더'에 저장되었습니다!")
+                        except requests.exceptions.RequestException as e:
+                            st.error(f"저장에 실패했습니다: {e}")
+                else:
+                    st.warning("저장할 파일이나 요약 내용이 없습니다.")
+
             if evidence:
-                from pprint import pformat
                 with st.expander("🔎 근거 컨텍스트 보기"):
                     st.code(pformat(evidence))
 
@@ -1030,6 +1172,8 @@ with tab1:
         with c1:
             if st.button("← 설정으로 돌아가기", key="back_to_config"):
                 st.session_state.summary_stage = "config"
+                for k in ["summary", "_last_evidence", "_result_title", "_result_pdf_bytes", "_result_pdf_name"]:
+                    if k in st.session_state: del st.session_state[k]
                 st.rerun()
         with c2:
             st.caption("💡 요약 결과는 자동으로 퀴즈 탭에 전달됩니다.")
@@ -1037,13 +1181,28 @@ with tab1:
 # -------------------------------------------------------------------
 # TAB 2: 퀴즈 생성기
 # -------------------------------------------------------------------
-with tab2:
-    st.session_state["_active_tab"] = "quiz"
+elif st.session_state["_active_tab"] == "quiz":
 
     if "quiz_stage" not in st.session_state:
         st.session_state.quiz_stage = "setup"
 
     if st.session_state.quiz_stage == "setup":
+        def _prefill_summary_from_db_once():
+            flag_key = "_prefilled_summary_from_db"
+            if st.session_state.get(flag_key):
+                return
+            try:
+                r = requests.get(f"{BACKEND_URL}/ocr-files/latest/{USER_ID}", params={"only": "summary"}, timeout=10)
+                if r.ok:
+                    j = r.json()
+                    s = (j.get("summary") or "").strip()
+                    if s and not st.session_state.get("summary"):
+                        st.session_state["summary"] = s
+                st.session_state[flag_key] = True
+            except Exception:
+                st.session_state[flag_key] = True
+
+        _prefill_summary_from_db_once()
         st.markdown('<div class="card-begin"></div>', unsafe_allow_html=True)
         with st.container():
             st.markdown('<div class="badge-full">퀴즈 생성</div>', unsafe_allow_html=True)
@@ -1060,8 +1219,10 @@ with tab2:
                 allowed_types = [t for t, ok in [("객관식", t_obj), ("OX", t_ox), ("단답형", t_sa)] if ok]
             with c3:
                 content_default = st.session_state.get("summary", "")
-                content_input = st.text_area("✍️ 학습 내용을 입력하거나 PDF 요약 결과를 사용하세요",
-                                             value=content_default, height=120, key="quiz_content_input")
+                content_input = st.text_area(
+                    "✍️ 학습 내용을 입력하거나 PDF 요약 결과를 사용하세요",
+                    value=content_default, height=120, key="quiz_content_input"
+                )
                 st.caption("✅ PDF 요약 결과가 있으면 자동으로 채워집니다.")
 
             st.markdown('<div class="primary-btn quiz" style="margin-top:6px;">', unsafe_allow_html=True)
@@ -1092,8 +1253,6 @@ with tab2:
                 st.info(f"📚 학습 요약:\n\n{st.session_state.summary_log}")
 
     elif st.session_state.quiz_stage == "play":
-        if not st.session_state.get("quiz_data"):
-            st.session_state.quiz_stage = "setup"; st.rerun()
 
         # (요청) 상단의 '← 퀴즈 재생성' 버튼 제거
 
@@ -1136,7 +1295,49 @@ with tab2:
 
             except Exception:
                 return False
+            
+        def _build_quiz_payload(include_answers: bool = False):
+            qlist = st.session_state.quiz_data
+            ua_map = st.session_state.user_answers or {}
+            items = []
+            for i, q in enumerate(qlist):
+                ua = ua_map.get(i, None)
+                ic = False
+                if include_answers and ua not in (None, "", []):
+                    try:
+                        ic = bool(_is_correct(ua, q.get("answer", "")))
+                    except Exception:
+                        ic = False
+                item = {
+                    "type": q.get("type",""),
+                    "quiz_text": q.get("question",""),
+                    "answer": q.get("answer",""),
+                    "choices": q.get("options", []) or (["O","X"] if q.get("type")=="OX" else [])
+                }
+                if include_answers:
+                    item["user_answer"] = ua
+                    item["is_correct"] = ic
+                items.append(item)
 
+            return {
+                "quiz_type": "요약",
+                "quiz": items,
+                "bet_point": 0,
+                "reward_point": 0,
+                "source": {"from": "writin_ocr_latest"},
+                "summary_preview": (st.session_state.get("summary") or "")[:400]
+            }
+        
+        def _save_quiz_to_backend(include_answers: bool = True):
+            payload = _build_quiz_payload(include_answers=include_answers)
+            try:
+                res = requests.post(f"{BACKEND_URL}/quizzes/{USER_ID}", json=payload, timeout=15)
+                res.raise_for_status()
+                st.session_state["saved_quiz_id"] = res.json().get("inserted_id")
+                return True
+            except requests.exceptions.RequestException as e:
+                st.session_state["save_error"] = str(e)
+                return False
 
         def _render_player():
             qlist = st.session_state.quiz_data
@@ -1205,12 +1406,24 @@ with tab2:
                                     score += 1
                             st.session_state.score = score
                             st.session_state.graded = True
+                            _ = _save_quiz_to_backend(include_answers=True)
                             st.session_state.quiz_stage = "result"
                             st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                
+        if st.session_state.get("quiz_data"):
+            if st.button("💾 퀴즈 세트 저장하기", key="save_quiz_set"):
+                try:
+                    payload = _build_quiz_payload(include_answers=True)   # ← 핵심
+                    res = requests.post(f"{BACKEND_URL}/quizzes/{USER_ID}", json=payload, timeout=15)
+                    res.raise_for_status()
+                    st.success(f"퀴즈 세트를 저장했습니다. id = {res.json().get('inserted_id')}")
+                except requests.exceptions.RequestException as e:
+                    st.error(f"퀴즈 저장 실패: {e}")
+        if not st.session_state.get("quiz_data"):
+            st.session_state.quiz_stage = "setup"; st.rerun()
+
         _render_player()
 
     elif st.session_state.quiz_stage == "result":
@@ -1332,10 +1545,25 @@ with tab2:
 st.markdown("<hr style='border:none; border-top:1px dashed rgba(0,0,0,.08); margin: 16px 0 8px;'>", unsafe_allow_html=True)
 st.markdown("<div style='text-align:right;'>", unsafe_allow_html=True)
 
+WR_KEYS = {
+    "_active_tab","summary_pref","summary_stage",
+    "_pdf_bytes","_pdf_name","pages_text_cache","total_pages_cache",
+    "doc_id_cache","have_rag_cache",
+    "summary","_last_evidence","_result_title","_result_pdf_bytes","_result_pdf_name",
+    "page_s_num","page_e_num","pdf_uploader_main",
+    "count_input","t_obj","t_ox","t_sa","quiz_content_input",
+    "quiz_data","user_answers","current_idx","graded","score",
+    "free_q_input_normal_app","sim_threshold"
+}
+
+def clear_page_state():
+    for k in WR_KEYS:
+        st.session_state.pop(k, None)
+
+# 하단 버튼
 _label = "새로고침" if st.session_state.get("_active_tab") == "pdf" else "🔃새로고침"
-if st.button(_label, key="refresh_all"):
-    for k in list(st.session_state.keys()):
-        del st.session_state[k]
+if st.button(_label, key="wr_refresh"):
+    clear_page_state()      # ✅ 전역 상태는 보존
     st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)

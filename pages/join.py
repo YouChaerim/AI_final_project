@@ -1,13 +1,11 @@
+# pages/join.py
 import streamlit as st
 import re
+import requests
+import json
+import time
 
-# ✅ 1. set_page_config 가장 위에!
-st.set_page_config(
-    page_title="딸깍공 회원가입",
-    layout="centered",
-    initial_sidebar_state="collapsed",
-    menu_items={"Get Help": None, "Report a bug": None, "About": None}
-)
+BACKEND_URL = "http://127.0.0.1:8080"
 
 st.markdown("""
     <style>
@@ -21,10 +19,6 @@ st.markdown("""
     .go-login-wrap { text-align:center; margin-top: 12px; }
     </style>
 """, unsafe_allow_html=True)
-
-# ✅ 예시 데이터
-existing_user_ids = ["testuser", "admin123"]
-existing_nicknames = ["홍길동", "딸깍이"]
 
 # 🔶 헤더
 st.markdown("""
@@ -40,22 +34,36 @@ for key in ["user_id_checked", "last_checked_id", "user_id_msg",
 
 # ✅ 중복 확인
 def check_duplicate_id(user_id):
-    if user_id in existing_user_ids:
-        st.session_state.user_id_checked = False
-        st.session_state.user_id_msg = "<span style='color: red;'>❌ 이미 사용 중인 아이디입니다.</span>"
-    else:
-        st.session_state.user_id_checked = True
-        st.session_state.last_checked_id = user_id
-        st.session_state.user_id_msg = "<span style='color: green;'>✅ 사용 가능한 아이디입니다.</span>"
+    try:
+        response = requests.get(f"{BACKEND_URL}/auth/local/check-id/{user_id}")
+        if response.status_code == 200:
+            if response.json()["exists"]:
+                st.session_state.user_id_checked = False
+                st.session_state.user_id_msg = "<span style='color: red;'>❌ 이미 사용 중인 아이디입니다.</span>"
+            else:
+                st.session_state.user_id_checked = True
+                st.session_state.last_checked_id = user_id
+                st.session_state.user_id_msg = "<span style='color: green;'>✅ 사용 가능한 아이디입니다.</span>"
+        else:
+            st.session_state.user_id_msg = "<span style='color: red;'>⚠️ 서버 오류. 잠시 후 시도하세요.</span>"
+    except requests.exceptions.RequestException:
+        st.session_state.user_id_msg = "<span style='color: red;'>⚠️ 서버에 연결할 수 없습니다.</span>"
 
 def check_duplicate_nickname(nickname):
-    if nickname in existing_nicknames:
-        st.session_state.nickname_checked = False
-        st.session_state.nickname_msg = "<span style='color: red;'>❌ 이미 사용 중인 닉네임입니다.</span>"
-    else:
-        st.session_state.nickname_checked = True
-        st.session_state.last_checked_nickname = nickname
-        st.session_state.nickname_msg = "<span style='color: green;'>✅ 사용 가능한 닉네임입니다.</span>"
+    try:
+        response = requests.get(f"{BACKEND_URL}/auth/local/check-nickname/{nickname}")
+        if response.status_code == 200:
+            if response.json()["exists"]:
+                st.session_state.nickname_checked = False
+                st.session_state.nickname_msg = "<span style='color: red;'>❌ 이미 사용 중인 닉네임입니다.</span>"
+            else:
+                st.session_state.nickname_checked = True
+                st.session_state.last_checked_nickname = nickname
+                st.session_state.nickname_msg = "<span style='color: green;'>✅ 사용 가능한 닉네임입니다.</span>"
+        else:
+            st.session_state.nickname_msg = "<span style='color: red;'>⚠️ 서버 오류. 잠시 후 시도하세요.</span>"
+    except requests.exceptions.RequestException:
+        st.session_state.nickname_msg = "<span style='color: red;'>⚠️ 서버에 연결할 수 없습니다.</span>"
 
 # ✅ 입력 폼
 with st.form("signup_form", clear_on_submit=False):
@@ -106,24 +114,34 @@ if submit:
     elif password != confirm_password:
         st.markdown("<div style='background-color:#fff7cc;color:#333;padding:10px;border-radius:5px;'>암호가 틀립니다.</div>", unsafe_allow_html=True)
     else:
-        st.success("🎉 회원가입이 완료되었습니다!")
-        st.write(f"닉네임: {nickname}")
-        st.write(f"아이디: {user_id}")
-        if st.button("로그인 하러 가기"):
-            try:
-                st.switch_page("pages/login_page.py")
-            except Exception:
-                try:
-                    st.switch_page("login_page.py")
-                except Exception:
-                    st.stop()
+        payload = {
+            "user_id": user_id,
+            "password": password,
+            "nickname": nickname
+        }
+        try:
+            response = requests.post(f"{BACKEND_URL}/auth/local/signup", json=payload)
+            if response.status_code == 200:
+                res_data = response.json()
+                if res_data.get("result") == "ok":
+                    st.success("🎉 회원가입이 완료되었습니다!")
+                    time.sleep(2)
+                    st.switch_page("pages/login_page.py") # 경로는 실제에 맞게 수정
+                else:
+                    # 백엔드에서 보낸 에러 메시지 표시
+                    error_type = res_data.get("error", "unknown")
+                    if error_type == "user_exists":
+                        st.error("이미 가입된 아이디입니다. 아이디 중복 확인을 다시 해주세요.")
+                    elif error_type == "nickname_exists":
+                        st.error("이미 사용 중인 닉네임입니다. 닉네임 중복 확인을 다시 해주세요.")
+                    else:
+                        st.error(f"회원가입 중 오류가 발생했습니다: {error_type}")
+            else:
+                st.error(f"서버 오류가 발생했습니다. (Code: {response.status_code})")
+        
+        except requests.exceptions.RequestException:
+            st.error("서버에 연결할 수 없습니다. 백엔드 서버가 실행 중인지 확인하세요.")
 
 st.markdown("<div class='go-login-wrap'>이미 계정이 있으신가요?</div>", unsafe_allow_html=True)
 if st.button("로그인하기"):
-    try:
-        st.switch_page("pages/login_page.py")
-    except Exception:
-        try:
-            st.switch_page("login_page.py")
-        except Exception:
-            st.stop()
+    st.switch_page("onboarding.py")
