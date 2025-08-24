@@ -117,6 +117,7 @@ header, [data-testid="stSidebar"], [data-testid="stToolbar"] {{ display:none !im
 [data-testid="stPageLink"] a p {{
     margin: 0;
 }}
+.profile-icon img {{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }}
 
 /* 공통 카드 */
 .card {{ background:{card_bg}; border:1px solid rgba(0,0,0,.06); border-radius:18px; padding:16px; box-shadow:0 10px 28px rgba(0,0,0,.06); margin-top:16px; }}

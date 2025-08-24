@@ -1,4 +1,4 @@
-# onboarding.py (B안: 로그인 전용 + 성공 시 pages/mainpage.py로 전환)
+# onboarding.py
 import streamlit as st
 import os
 import requests
