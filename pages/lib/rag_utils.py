@@ -37,12 +37,20 @@ except Exception:
 def get_embedder():
     """SentenceTransformer 임베더 1회 로드 + GPU FP16/TF32 최적화"""
     from sentence_transformers import SentenceTransformer
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = SentenceTransformer(BGE_MODEL_NAME, device=device)
-    if device == "cuda":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = SentenceTransformer(BGE_MODEL_NAME, device=str(device))
+
+    if device.type == "cuda":
         try:
-            model = model.half()
+            # 반드시 GPU로 올리기
+            model.to(device)
+            # (가능 시) TF32 허용
             torch.backends.cuda.matmul.allow_tf32 = True
+            # (가능 시) FP16로 전환 — 실패해도 조용히 FP32 유지
+            try:
+                model.to(dtype=torch.float16)
+            except Exception:
+                pass
         except Exception:
             pass
     return model
@@ -69,13 +77,16 @@ def embed_texts(
     if batch_size is None:
         batch_size = 128 if torch.cuda.is_available() else 32
 
+    target_device = "cuda" if torch.cuda.is_available() else "cpu"
+
     with torch.inference_mode():
         vecs = emb.encode(
             texts,
             batch_size=batch_size,
             normalize_embeddings=normalize,
-            convert_to_numpy=True,
+            convert_to_numpy=True,          # 계산은 GPU에서, 반환은 numpy(=CPU 메모리)
             show_progress_bar=False,
+            device=target_device,           # 🔴 중요: encode에도 device 명시
         )
     return vecs
 
@@ -224,7 +235,6 @@ def _build_where(doc_id: str, page_range: Optional[Tuple[int, int]]):
         }
     # 단일 조건이라도 일관성 위해 $and로 감싸도 무방
     return {"$and": [{"doc_id": doc_id}]}
-
 
 def _l2n(x: np.ndarray):
     n = np.linalg.norm(x, axis=1, keepdims=True) + 1e-9

@@ -112,31 +112,31 @@ db = client["ttalk"]
 # print("✅ 샘플 데이터 insert 완료!")
 
 
-# from server.common_sign import db, hash_pw, now_kst
+from server.common_sign import db, hash_pw, now_kst
 
-# UID  = "yu@gmail.com"
-# PW   = "123"
-# NICK = "유저"
+UID  = "yu@gmail.com"
+PW   = "123"
+NICK = "유저"
 
-# # 로컬 계정은 (provider, local_user_id)로 식별
-# db.User.update_one(
-#     {"provider": "local", "local_user_id": UID},
-#     {
-#         "$set": {
-#             "provider": "local",
-#             "provider_id": 0,            # null 말고 0으로 통일
-#             "local_user_id": UID,
-#             "nickname": NICK,
-#             "passwd": hash_pw(PW),
-#             "last_login_log": now_kst(),
-#         },
-#         "$setOnInsert": {
-#             "created_at": now_kst(),
-#             "points": 0,
-#             "continuous_count": 0,
-#         },
-#     },
-#     upsert=True,
-# )
+# 로컬 계정은 (provider, local_user_id)로 식별
+db.User.update_one(
+    {"provider": "local", "local_user_id": UID},
+    {
+        "$set": {
+            "provider": "local",
+            "provider_id": 0,            # null 말고 0으로 통일
+            "local_user_id": UID,
+            "nickname": NICK,
+            "passwd": hash_pw(PW),
+            "last_login_log": now_kst(),
+        },
+        "$setOnInsert": {
+            "created_at": now_kst(),
+            "points": 0,
+            "continuous_count": 0,
+        },
+    },
+    upsert=True,
+)
 
-# print("✅ 로컬 계정 upsert 완료:", UID)
+print("✅ 로컬 계정 upsert 완료:", UID)
