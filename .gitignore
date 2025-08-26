@@ -1,124 +1,94 @@
-merged_dataset1
-
-eyes-2
-
-Drowsiness-detection-4
-
+# =========================
+# Secrets / Environments
+# =========================
 .env
-
-Drowsiness-detection-4 copy
-
-Drowsiness-detection-4 copy 2
-
-Drowsiness-with-eyes
-
-Drowsiness-with-eyes2
-
-eye-yawn
-
-1classtrans.py
-
-1datastet_merge.py
-
-1model_GPU.py
-
-1model_train.py
-
-1model_test.py
-
-train
-train2
-train3
-train4
-train5
-train6 yawntrain
-train7
-train8
-train9
-train10
-train11
-train12
-train13
-train14
-train15
-train16 eyetrain
-train17
-train18
-train19
-train20
-train21
-train22
-train23
-"*.pyc" 
-"__pycache__/" 
-__pycache__/ 
-*.pyc 
-maintest.py
-
-__pycache__
-1FP16.py
-train6
-train16
-train24
-train25
-1onnx_model_test.py
-1.py
-2.py
-
-2 ONNX_camera copy.py
-2 ONNX_picture copy.py
-2 ONNX_picture.py
-2 ONNX_camera.py
-2 TEST.py
-2 YOLO(onnx).py
-onnx_output.jpg
-onnx_predict_V2.py
-onnx_predict_V3.py
-onnx_result_final.jpg
-onnx_result.jpg
-pexels-cottonbro-6753371.jpg
-pexels-shvets-production-8416079.jpg
-user_yawn_data_user01.json
-train26
-ragtest
-
-.DS_Store
-vectorstore
-quiz1.py
-quiz.py
-
-uploads/*
-
 server/.env
-server/uploads
-server/data
-server/db_insert
-server/report_demo.py
-server/seed_ranking.py
 
-yolo11n.pt
-yolov8n.pt
-
-
+# =========================
 # Python
+# =========================
 __pycache__/
 *.py[cod]
 *$py.class
+
+# 가상환경
 .venv/
 venv/
-.env
-server/.env
 
-# Streamlit / macOS / IDE
+# =========================
+# Streamlit / OS / IDE
+# =========================
 .streamlit/
 .DS_Store
 .vscode/
 .idea/
 
-# Data & models
-uploads/
-runs/
+# =========================
+# Data & Models & Artifacts
+# =========================
+/uploads/
+server/uploads/
+/server/data/
+/vectorstore/
+/runs/
 *.pt
 *.onnx
 *.bin
 *.ckpt
+
+# ONNX 추론 결과 이미지
+/onnx_output.jpg
+/onnx_result.jpg
+/onnx_result_final.jpg
+
+# 샘플 이미지/사용자 데이터
+/pexels-cottonbro-6753371.jpg
+/pexels-shvets-production-8416079.jpg
+/user_yawn_data_*.json
+
+# =========================
+# Datasets / Training dirs (root)
+# =========================
+/merged_dataset1/
+/eyes-2/
+/Drowsiness-detection-4*/
+/Drowsiness-with-eyes*/
+/eye-yawn/
+
+/train*/
+# 공백 포함 폴더명도 명시(있을 경우)
+/train6 yawntrain/
+/train16 eyetrain/
+/yawntrain/
+/eyetrain/
+
+# =========================
+# Server-side temp & seed scripts
+# =========================
+/server/db_insert*
+/server/report_demo.py
+/server/seed_ranking.py
+
+# =========================
+# One-off / 실험용 스크립트 (root)
+# =========================
+/maintest.py
+/quiz1.py
+/quiz.py           # pages/quiz.py는 제외(루트만 무시)
+
+/1*.py
+/2*.py
+/2 ONNX_camera.py
+/2 ONNX_camera copy.py
+/2 ONNX_picture.py
+/2 ONNX_picture copy.py
+/2 YOLO(onnx).py
+/2 TEST.py
+/onnx_predict_V2.py
+/onnx_predict_V3.py
+
+# =========================
+# 기타 임시 폴더/파일
+# =========================
+/ragtest
+/ragtest*/
