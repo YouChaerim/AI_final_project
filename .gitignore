@@ -98,3 +98,27 @@ server/seed_ranking.py
 
 yolo11n.pt
 yolov8n.pt
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+server/.env
+
+# Streamlit / macOS / IDE
+.streamlit/
+.DS_Store
+.vscode/
+.idea/
+
+# Data & models
+uploads/
+runs/
+*.pt
+*.onnx
+*.bin
+*.ckpt
