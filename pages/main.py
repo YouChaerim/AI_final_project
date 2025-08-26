@@ -11,8 +11,8 @@ import math
 from components.header import render_header
 import requests
 from components.auth import require_login
+from streamlit_autorefresh import st_autorefresh
 
-print(f"✅✅✅ Executing: {__file__} ✅✅✅")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8080")
 require_login(BACKEND_URL)
 
@@ -98,8 +98,6 @@ html, body {{
     margin: 0;
 }}
 .stApp {{ background-color: {bg_color}; }}
-.block-container {{ padding-top: 0 !important; }}
-.container {{ max-width: 1200px; margin: auto; padding: 40px; }}
 a {{ text-decoration: none !important; color: {font_color}; }}
 
 /* [UI] 공통 카드/패널 */
@@ -359,6 +357,12 @@ if "pomodoro_duration" not in st.session_state:
     st.session_state.pomodoro_duration = 25 * 60
 if "last_study_tick_ts" not in st.session_state:
     st.session_state.last_study_tick_ts = time.time()
+if "pomodoro_remaining" not in st.session_state:
+    st.session_state.pomodoro_remaining = st.session_state.pomodoro_duration
+if "last_timer_tick" not in st.session_state:
+    st.session_state.last_timer_tick = time.time()
+if "timer_paused" not in st.session_state:
+    st.session_state.timer_paused = False
 
 # ======== 🔴 빨간 박스 로직용 추가 상태 ========
 def _init_red_states():
@@ -388,6 +392,8 @@ def start_break(seconds=300, reason="manual"):
     ss.pomodoro_mode = "휴식 중"
     ss.pomodoro_duration = seconds
     ss.pomodoro_start = time.time()
+    ss.pomodoro_remaining = seconds
+    ss.last_timer_tick = time.time()
     ss.rest_prompt_active = False
     ss.low_focus_since = None
     ss.last_break_reason = reason
@@ -420,6 +426,8 @@ def end_break():
     ss.pomodoro_mode = "공부 중"
     ss.pomodoro_duration = 25 * 60
     ss.pomodoro_start = time.time()
+    ss.pomodoro_remaining = ss.pomodoro_duration
+    ss.last_timer_tick = time.time()
     ss.show_start_alert = True
     sid = ss.get("study_session_id")
     if sid:
@@ -439,8 +447,28 @@ def end_break():
 
 # ======== 뽀모도로 업데이트 ========
 def update_pomodoro():
-    elapsed = time.time() - st.session_state.pomodoro_start
-    if elapsed > st.session_state.pomodoro_duration:
+    """남은 시간을 카메라가 켜져 있을 때만 줄인다."""
+    now = time.time()
+    should_count = (
+        (st.session_state.get("pomodoro_mode") == "휴식 중") or
+        (st.session_state.get("start_camera", False)
+        and st.session_state.get("cam_active", False)
+        and not st.session_state.get("ended", False))
+    )
+
+    dt = now - st.session_state.last_timer_tick
+    st.session_state.last_timer_tick = now
+
+    if should_count:
+        st.session_state.timer_paused = False
+        st.session_state.pomodoro_remaining = max(
+            0, st.session_state.pomodoro_remaining - int(dt)
+        )
+    else:
+        st.session_state.timer_paused = True
+
+    # 남은 시간이 0이면 다음 단계로
+    if st.session_state.pomodoro_remaining <= 0:
         if st.session_state.pomodoro_mode == "공부 중":
             if not st.session_state.break_active:
                 start_break(seconds=5*60, reason="pomodoro")
@@ -665,6 +693,10 @@ with col2:
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="panel-foot small-subtle">⏳ 타이머는 <b>카메라가 켜져 있을 때만</b> 줄어듭니다.</div>',
+        unsafe_allow_html=True
+    )
     st.markdown('<div class="panel-foot small-subtle">웹캠 연결 후 하품/졸음 감지를 통해 실시간으로 집중도를 계산합니다.</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -678,24 +710,25 @@ with col3:
     # with st.sidebar:
     #     st_autorefresh(interval=1000, key="auto_refresh")
 
-    if st.session_state.get("cam_active"):
-        from streamlit_autorefresh import st_autorefresh
-        st_autorefresh(interval=15000, key="auto_refresh_cam")
+    def _is_counting():
+        return (
+            st.session_state.get("pomodoro_mode") == "휴식 중" or
+            (
+                st.session_state.get("start_camera", False)
+                and st.session_state.get("cam_active", False)
+                and not st.session_state.get("ended", False)
+            )
+        )
+
+    st_autorefresh(
+        interval=1000 if _is_counting() else 8000,   # 카운팅 중 1초, 아닐 땐 8초
+        key="auto_refresh_timer"
+    )
 
     update_pomodoro()
-    remain_exact = st.session_state.pomodoro_duration - (time.time() - st.session_state.pomodoro_start)
-    remaining = int(math.ceil(max(0, remain_exact)))
-    remaining = min(remaining, int(st.session_state.pomodoro_duration))
-
-    phase = (st.session_state.pomodoro_mode, st.session_state.pomodoro_duration)
-    if st.session_state.get("last_phase") == phase:
-        prev = st.session_state.get("last_remaining", remaining)
-        if remaining < prev - 1:
-            remaining = prev - 1
-    st.session_state.last_phase = phase
-    st.session_state.last_remaining = remaining
-
+    remaining = int(st.session_state.pomodoro_remaining)
     mins, secs = divmod(remaining, 60)
+
     ratio = remaining / st.session_state.pomodoro_duration if st.session_state.pomodoro_duration > 0 else 0.0
     ratio = max(0.0, min(1.0, ratio))
 
@@ -900,15 +933,6 @@ if ss.get("rest_prompt_active", False):
             '<div style="color:#ff6b6b; font-weight:700; margin-top:10px;">⚠️ 졸음/하품이 반복적으로 감지되고 있어요! 잠시 쉬어보는 건 어떨까요?</div>',
             unsafe_allow_html=True
         )
-
-if "last_study_tick_ts" not in st.session_state:
-    st.session_state.last_study_tick_ts = _now
-
-dt = int(max(0, _now - st.session_state.last_study_tick_ts))
-st.session_state.total_study_sec += dt
-st.session_state.last_study_tick_ts = _now
-
-remaining = max(0, int(st.session_state.pomodoro_duration - (time.time() - st.session_state.pomodoro_start)))
 
 # === 주기 저장 ===
 now = time.time()

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from .server_db import db
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from server import kakao_sign, local_sign, todos, memos, study_time, ocr_files, study_sessions, quizzes, reports, ranking, memo_folder_api, wrong_folder_api, pdf_folder_api
+from server import kakao_sign, local_sign, todos, memos, study_time, ocr_files, study_sessions, quizzes, reports, ranking, shop
 
 app = FastAPI(title="ttalk API", version="0.1.0")
 
@@ -29,9 +29,7 @@ app.include_router(study_sessions.router)
 app.include_router(quizzes.router)
 app.include_router(reports.router)
 app.include_router(ranking.router)
-app.include_router(memo_folder_api.router)
-app.include_router(wrong_folder_api.router)
-app.include_router(pdf_folder_api.router)
+app.include_router(shop.router)
 
 @app.get("/health")
 def health():
