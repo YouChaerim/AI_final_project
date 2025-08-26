@@ -85,7 +85,6 @@ def show_login_ui():
         .paw-icon { font-size:2rem; margin-right:0.4rem; }
         .stTextInput > div > input { margin-top: 8; padding:4; font-size:0.95rem; border-radius:6px; border:2px solid #FFA500; background-color:#F4F6FA; }
         [data-testid="stFormSubmitButton"] button { padding:0.8rem; border-radius:0.6rem; font-weight:700; font-size:1rem; background-color:#FFF5E5; color:#FFA500; border:2px solid #FFA500; }
-        .checkbox-box { margin-top:0.4rem; margin-bottom:1.2rem; }
         .social-login { text-align:center; margin-top:2rem; font-size:1.07rem; color:#111; font-weight:bold; margin-bottom:1.2rem; letter-spacing:.02em; }
         .simple-login-row { display:flex; justify-content:center; align-items:center; gap:24px; margin:16px 0 22px 0; }
         .simple-login-icon { width:48px; height:48px; border-radius:50%; box-shadow:0 2px 10px rgba(0,0,0,.06); background:#fff; display:flex; align-items:center; justify-content:center; transition:box-shadow .2s; }
@@ -103,8 +102,6 @@ def show_login_ui():
             user_id_input = st.text_input("아이디", placeholder="아이디", label_visibility="collapsed")
             user_pw_input = st.text_input("비밀번호", type="password", placeholder="비밀번호", label_visibility="collapsed")
             login_clicked = st.form_submit_button("로그인")
-
-            st.checkbox("로그인 상태 유지", value=True)
 
         if login_clicked:
             if user_id_input and user_pw_input:

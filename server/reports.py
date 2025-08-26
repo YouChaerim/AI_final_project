@@ -75,10 +75,26 @@ def daily_report(
     ses_by_day = {
         d["_id"].date().isoformat(): float(d["min"])
         for d in _sess().aggregate([
-            {"$match": {"user_id": uid, "start": {"$gte": t0, "$lt": t1}}},
+            {"$match": {"user_id": uid,
+                        "$or": [
+                            {"start": {"$gte": t0, "$lt": t1}},
+                            {"study_date": {"$gte": t0, "$lt": t1}}
+                        ]}},
             {"$project": {
-                "day": {"$dateTrunc": {"date": "$start", "unit": "day", "timezone": "Asia/Seoul"}},
-                "minutes": {"$ifNull": ["$minutes", {"$divide":[{"$subtract":["$end","$start"]}, 60000]}]}
+                # start/end 필드 혼재 대응
+                "startX": {"$ifNull": ["$start", "$study_date"]},
+                "endX":   {"$ifNull": ["$end", "$end_time"]},
+                "minutes": {"$ifNull": [
+                    "$minutes",
+                    {"$divide": [{"$subtract": [
+                        {"$ifNull": ["$end", "$end_time"]},
+                        {"$ifNull": ["$start", "$study_date"]}
+                    ]}, 60000]}
+                ]}
+            }},
+            {"$project": {
+                "day": {"$dateTrunc": {"date": "$startX", "unit": "day", "timezone": "Asia/Seoul"}},
+                "minutes": {"$ifNull": ["$minutes", 0]}
             }},
             {"$group": {"_id": "$day", "min": {"$sum": "$minutes"}}}
         ])
@@ -96,10 +112,17 @@ def daily_report(
     ]):
         att_days.add(d["_id"].date().isoformat())
 
-    # 보조 규칙: 세션이 있거나 ATTENDANCE 포인트가 있으면 출석 1로 인정
-    for k in set(list(ses_by_day.keys()) + list(pts_by_day.keys())):
-        if k in pts_by_day and "ATTEND" in ",".join(pts_by_reason.keys()).upper():
-            att_days.add(k)
+    # 보조 규칙: 해당 '날짜'에 ATTEND 계열 포인트가 있으면 그 날을 출석으로 인정
+    att_from_points_days = {
+        d["_id"].date().isoformat()
+        for d in _points().aggregate([
+            {"$match": {**pos_match, "reason": {"$regex": "ATTEND", "$options": "i"}}},
+            {"$group": {"_id": {
+                "$dateTrunc": {"date": "$gain_date", "unit": "day", "timezone": "Asia/Seoul"}
+            }}}
+        ])
+    }
+    att_days |= att_from_points_days
 
     # ----- 날짜축 생성 & 병합 -----
     days = []
@@ -134,3 +157,127 @@ def focus_of_day(user_key: str, day: str = Query(..., description="YYYY-MM-DD"))
                  {"time":"10:00","blinks":3,"yawns":1},
                  {"time":"14:30","blinks":4,"yawns":2}]
     return {"day": day, "events": items}
+
+@router.get("/summary/{user_key}")
+def summary_all(user_key: str):
+    uid = _resolve_uid(user_key)
+    U = _users()
+    P = _points()
+    S = _sess()
+    A = _att()
+
+    u = U.find_one({"_id": uid}, {"created_at":1, "points":1})
+    if not u:
+        raise HTTPException(404, "user not found")
+    created_at = u.get("created_at") or datetime(1970,1,1, tzinfo=KST)
+    now = datetime.now(tz=KST)
+
+    # 1) 총 학습일 = 출석한 일수(가입~현재)
+    att_days = set()
+    for d in A.aggregate([
+        {"$match": {"user_id": uid,
+                    "$or":[{"date":{"$gte":created_at, "$lt":now}},
+                           {"checked_at":{"$gte":created_at, "$lt":now}}]}},
+        {"$project":{"day":{"$ifNull":["$date", {"$dateTrunc":{"date":"$checked_at","unit":"day","timezone":"Asia/Seoul"}}]}}},
+        {"$group":{"_id":"$day"}}
+    ]):
+        att_days.add(d["_id"].date())
+
+    # 출석 기록이 없다면 세션이 있는 날을 보조로 포함
+    for d in S.aggregate([
+        {"$match": {"user_id": uid, "start": {"$gte": created_at, "$lt": now}}},
+        {"$project": {"day": {"$dateTrunc":{"date":"$start","unit":"day","timezone":"Asia/Seoul"}}}},
+        {"$group": {"_id":"$day"}}
+    ]):
+        att_days.add(d["_id"].date())
+
+    total_learning_days = len(att_days)
+
+    # 2) 연속 출석일(오늘부터 거꾸로, 하루 60분 이상 학습)
+    #    minutes 필드가 없으면 end-start로 대체
+    pipeline = [
+        {"$match": {"user_id": uid, "start": {"$type": "date"}}},  # start 가 날짜인 문서만
+        {"$project": {
+            "day": {"$dateTrunc": {"date": "$start", "unit": "day", "timezone": "Asia/Seoul"}},
+            # minutes 필드가 없으면 end-start, 그마저도 없으면 0
+            "minutes": {
+                "$ifNull": [
+                    "$minutes",
+                    {"$divide": [{"$subtract": ["$end", "$start"]}, 60000]}
+                ]
+            }
+        }},
+        {"$match": {"day": {"$ne": None}}},  # day 가 null 인 것 제거
+        {"$group": {
+            "_id": "$day",
+            "min": {"$sum": {"$ifNull": ["$minutes", 0]}}
+        }}
+    ]
+
+    minutes_by_day = {}
+    for d in S.aggregate(pipeline):
+        day = d.get("_id")
+        if isinstance(day, datetime):  # 혹시 모를 None 방어
+            minutes_by_day[day.date()] = float(d.get("min") or 0.0)
+    streak = 0
+    cur = datetime.now(tz=KST).date()
+    while True:
+        if minutes_by_day.get(cur, 0) >= 60:
+            streak += 1
+            cur -= timedelta(days=1)
+        else:
+            break
+
+    # 3) 총 포인트(가입~현재): 유저 문서의 보유 포인트가 있으면 그 값을 사용
+    total_points = int(u.get("points", 0))
+
+    return {
+        "total_learning_days": total_learning_days,
+        "streak_days": streak,
+        "total_points": total_points,
+        "created_at": (created_at.astimezone(KST)).date().isoformat()
+    }
+
+
+# === NEW: 기간별 집중도 히스토그램(시간대 24칸) ===
+@router.get("/focus_hist/{user_key}")
+def focus_hist(user_key: str, start: str = Query(...), end: str = Query(...)):
+    uid = _resolve_uid(user_key)
+    t0 = _dt_kst(start, end=False)
+    t1 = _dt_kst(end,   end=True)
+
+    S = _sess()
+    items = list(S.find(
+        {"user_id": uid, "$or": [
+            {"start": {"$lt": t1}, "end": {"$gt": t0}},
+            {"study_date": {"$lt": t1}, "end_time": {"$gt": t0}}
+        ]},
+        {"start":1, "end":1, "study_date":1, "end_time":1, "focus_score":1, "minutes":1}
+    ))
+
+    def _as_kst(dt):
+        if not dt: return None
+        return dt.replace(tzinfo=KST) if dt.tzinfo is None else dt.astimezone(KST)
+
+    wsum = [0.0]*24; wmin = [0.0]*24
+    for it in items:
+        s = _as_kst(it.get("start") or it.get("study_date"))
+        e = _as_kst(it.get("end") or it.get("end_time") or s)
+        fs = float(it.get("focus_score") or 0)
+        if not s or not e: continue
+        s = max(s, t0); e = min(e, t1)
+        if e <= s: continue
+
+        cur = s
+        while cur < e:
+            h_end = datetime(cur.year, cur.month, cur.day, cur.hour, tzinfo=KST) + timedelta(hours=1)
+            seg_end = min(h_end, e)
+            mins = (seg_end - cur).total_seconds()/60.0
+            if mins > 0:
+                idx = cur.hour
+                wsum[idx] += fs * mins
+                wmin[idx] += mins
+            cur = seg_end
+
+    hourly = [(wsum[h]/wmin[h] if wmin[h] > 0 else 0.0) for h in range(24)]
+    return {"start": start, "end": end, "hourly": hourly}
